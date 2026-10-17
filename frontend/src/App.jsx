@@ -1,121 +1,96 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useCallback, useEffect, useState } from 'react'
+import Scene from './three/Scene.jsx'
+import SettingsPanel from './components/SettingsPanel.jsx'
+import { DEFAULT_SETTINGS, loadSettings, heightFor } from './settings.js'
 import './App.css'
 
+const round = (n) => Math.round(n * 10) / 10
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [settings, setSettings] = useState(loadSettings)
+  const [panelOpen, setPanelOpen] = useState(true)
+  const [resetKey, setResetKey] = useState(0)
+  const [cam, setCam] = useState(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('neurorender.settings.v1', JSON.stringify(settings))
+    } catch {
+      // storage unavailable — ignore
+    }
+  }, [settings])
+
+  const update = useCallback((patch) => {
+    setSettings((s) => ({ ...s, ...patch }))
+  }, [])
+
+  const onCamera = useCallback((info) => setCam(info), [])
+  const resetView = useCallback(() => setResetKey((k) => k + 1), [])
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-dot" />
+          <span>
+            Neurorender<small>3D space · {settings.worldSize}×{heightFor(settings.worldSize)}×{settings.worldSize}</small>
+          </span>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+        <div className="topbar-actions">
+          <button type="button" className="tbtn" onClick={resetView}>
+            Reset view
+          </button>
+          <button
+            type="button" className="tbtn"
+            onClick={() => setPanelOpen((o) => !o)}
+          >
+            Settings
+          </button>
         </div>
+      </header>
+
+      <div className="viewport">
+        <Scene settings={settings} resetKey={resetKey} onCamera={onCamera} />
+
+        <div className="hud">
+          <div><b>Drag</b> rotate · <b>Right-drag</b> pan · <b>Wheel</b> zoom</div>
+          <div><b>WASD</b> move · <b>Q/E</b> down/up · <b>Shift</b> sprint</div>
+        </div>
+
+        {cam && (
+          <div className="readout">
+            <span>
+              target {round(cam.target[0])}, {round(cam.target[1])}, {round(cam.target[2])}
+            </span>
+            <span>dist {round(cam.dist)}</span>
+          </div>
+        )}
+
+        <SettingsPanel
+          open={panelOpen}
+          settings={settings}
+          onChange={update}
+          onToggle={() => setPanelOpen((o) => !o)}
+          onResetView={resetView}
+        />
+      </div>
+
+      <footer className="statusbar">
+        <span>Three.js · React Three Fiber</span>
+        <span className="message">
+          {settings.showBounds
+            ? 'Neuron volume bounds shown — future neuron rendering will live inside this box'
+            : 'axes off / bounds off'}
+        </span>
         <button
           type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          className="tbtn small"
+          onClick={() => setSettings(DEFAULT_SETTINGS)}
         >
-          Count is {count}
+          Restore defaults
         </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      </footer>
+    </div>
   )
 }
 
