@@ -75,6 +75,23 @@ function App() {
         <div className="topbar-actions">
           <button
             type="button"
+            className="simulate-organism-btn"
+            disabled={!organism}
+            onClick={() => {}}
+          >
+            Simulate organism
+          </button>
+          <button
+            type="button"
+            className="clear-organism-btn"
+            disabled={!organism}
+            onClick={() => setOrganism(null)}
+            title="Clear organism"
+          >
+            Clear organism
+          </button>
+          <button
+            type="button"
             className="edit-organism-btn"
             disabled={!organism}
             onClick={() => {

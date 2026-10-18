@@ -101,6 +101,50 @@
   cursor: not-allowed;
 }
 
+.clear-organism-btn {
+  appearance: none;
+  border: none;
+  background: #d94545;
+  color: #fff;
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.clear-organism-btn:hover:not(:disabled) {
+  background: #f05f5f;
+}
+
+.clear-organism-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.simulate-organism-btn {
+  appearance: none;
+  border: none;
+  background: #7b5fd9;
+  color: #fff;
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.simulate-organism-btn:hover:not(:disabled) {
+  background: #8d75e0;
+}
+
+.simulate-organism-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .topbar-actions {
   display: flex;
   gap: 8px;
