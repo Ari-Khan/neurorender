@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { LAYER_COLORS, forEachSpikeInRange, simData } from '../sim/simData'
+import { DEFAULT_STIMULI, STIMULI_INFO, STIMULI_OPTIONS } from '../sim/stimuli'
 
 const RASTER_WINDOW_MS = 5000
 const RATE_WINDOW_MS = 8000
@@ -182,19 +183,85 @@ function LayerChip({ layer }) {
   )
 }
 
+// Radio list of chemical stimuli, each expanding into its concentration slider.
+function StimuliTab({ stimuli, onStimuliChange }) {
+  return (
+    <>
+      <p className="stats-hint">
+        Chemicals modulate the Izhikevich model&apos;s drive and spike peak.
+      </p>
+      <section className="stimuli-list">
+        {STIMULI_OPTIONS.map((option) => {
+          const info = STIMULI_INFO[option.id]
+          const selected = stimuli.type === option.id
+          const value = stimuli[option.id]
+          return (
+            <div key={option.id} className="stimulus-item">
+              <button
+                type="button"
+                className={`stimulus-choice${selected ? ' active' : ''}`}
+                aria-pressed={selected}
+                onClick={() => onStimuliChange({ ...stimuli, type: option.id })}
+              >
+                <span className="stimulus-radio" aria-hidden="true" />
+                <span className="stimulus-label">{option.label}</span>
+              </button>
+              {selected && (
+                <div className="stimulus-detail">
+                  {option.id !== 'none' && (
+                    <div className="stimulus-slider">
+                      <input
+                        type="range"
+                        min={info.min}
+                        max={info.max}
+                        step={info.step}
+                        value={value}
+                        onChange={(event) => onStimuliChange({
+                          ...stimuli,
+                          [option.id]: Number(event.target.value),
+                        })}
+                      />
+                      <span className="stimulus-value">{info.format(value)}</span>
+                    </div>
+                  )}
+                  <p className="stimulus-note">{info.summary}</p>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </section>
+    </>
+  )
+}
+
 export default function StatsPanel({
   networkStats,
   selectedNeuron,
   onClearSelection,
   simulationEnabled,
   speed,
+  stimuli = DEFAULT_STIMULI,
+  onStimuliChange,
 }) {
   const [tab, setTab] = useState('section')
   const [expanded, setExpanded] = useState(true)
+  const [headHeight, setHeadHeight] = useState(0)
+  const [bodyHeight, setBodyHeight] = useState(0)
   const [, setTick] = useState(0)
   const rasterRef = useRef(null)
   const rateRef = useRef(null)
   const lastDrawRef = useRef(null)
+  const headRef = useRef(null)
+  const bodyInnerRef = useRef(null)
+
+  // Measures head + body before paint so the animated height never flashes.
+  useLayoutEffect(() => {
+    const head = headRef.current?.offsetHeight || 0
+    const body = bodyInnerRef.current?.offsetHeight || 0
+    setHeadHeight((prev) => (prev === head ? prev : head))
+    setBodyHeight((prev) => (prev === body ? prev : body))
+  }, [tab, expanded, selectedNeuron, stimuli])
 
   useEffect(() => {
     if (!expanded) return undefined
@@ -202,12 +269,12 @@ export default function StatsPanel({
     return () => window.clearInterval(id)
   }, [expanded])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     lastDrawRef.current = null
   }, [tab, expanded])
 
   const drawKey = `${simData.simTimeMs}|${simData.histCount}|${simData.neuronCount}`
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!expanded || tab !== 'section') return
     if (lastDrawRef.current === drawKey) return
     lastDrawRef.current = drawKey
@@ -237,8 +304,13 @@ export default function StatsPanel({
     && idx < d.layers.length
 
   return (
-    <div className="stats-panel" role="complementary" aria-label="Analysis readouts">
-      <div className="stats-head">
+    <div
+      className="stats-panel"
+      role="complementary"
+      aria-label="Analysis readouts"
+      style={headHeight > 0 ? { height: headHeight + (expanded ? bodyHeight : 0) } : undefined}
+    >
+      <div className="stats-head" ref={headRef}>
         <div className="stats-tabs" role="tablist" aria-label="Analysis tabs">
           <button
             type="button"
@@ -258,6 +330,15 @@ export default function StatsPanel({
           >
             Section
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'stimuli'}
+            className={`stats-tab${tab === 'stimuli' ? ' active' : ''}`}
+            onClick={() => setTab('stimuli')}
+          >
+            Stimuli
+          </button>
         </div>
         <button
           type="button"
@@ -268,8 +349,8 @@ export default function StatsPanel({
           {expanded ? '▾' : '▴'}
         </button>
       </div>
-      {expanded && (
-        <div className="stats-body">
+      <div className="stats-body" inert={expanded ? undefined : ''}>
+        <div className="stats-body-inner" ref={bodyInnerRef}>
           {tab === 'neuron' ? (
             hasNeuron ? (
               (() => {
@@ -335,6 +416,8 @@ export default function StatsPanel({
                 Click a neuron in the scene to inspect it. Selected neurons highlight in purple.
               </p>
             )
+          ) : tab === 'stimuli' ? (
+            <StimuliTab stimuli={stimuli} onStimuliChange={onStimuliChange} />
           ) : (
             <>
               <section>
@@ -412,7 +495,7 @@ export default function StatsPanel({
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

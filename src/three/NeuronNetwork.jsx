@@ -4,6 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import useIzhikevichSimulation from '../hooks/useIzhikevichSimulation'
 import { LAYER_COLORS, setNetworkLayout } from '../sim/simData'
+import { DEFAULT_STIMULI } from '../sim/stimuli'
 
 // Layout and look-and-feel tuning for the sampled network.
 const LAYER_ALLOCATION = [0.35, 0.4, 0.25]
@@ -569,6 +570,7 @@ export default function NeuronNetwork({
   simulationEnabled = false,
   simulationParams = null,
   simulationSpeed = 1,
+  stimuli = DEFAULT_STIMULI,
   selectedNeuron = null,
   onSelectNeuron = null,
   onLoadingChange,
@@ -689,6 +691,7 @@ export default function NeuronNetwork({
     speed: simulationSpeed,
     stimulus: 4,
     couplingStrength: 0.02,
+    stimuli,
   })
 
   // Starts a fresh run whenever the sim turns on or the params change.

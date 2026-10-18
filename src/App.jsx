@@ -4,6 +4,7 @@ import OrganismPanel from './components/OrganismPanel.jsx'
 import SimulationPanel from './components/SimulationPanel.jsx'
 import StatsPanel from './components/StatsPanel.jsx'
 import { resetSimData } from './sim/simData.js'
+import { DEFAULT_STIMULI } from './sim/stimuli.js'
 import { loadSettings } from './settings.js'
 import './App.css'
 
@@ -80,6 +81,7 @@ function App() {
     }
   })
   const [selectedNeuron, setSelectedNeuron] = useState(null)
+  const [stimuli, setStimuli] = useState(DEFAULT_STIMULI)
   const [organisms, setOrganisms] = useState(loadOrganisms)
   const [loadOpen, setLoadOpen] = useState(false)
   const lastOrganismRef = useRef(organism)
@@ -248,6 +250,7 @@ function App() {
           simulationEnabled={simulationEnabled}
           simulationParams={simulationParams}
           simulationSpeed={simSpeed}
+          stimuli={stimuli}
           selectedNeuron={selectedNeuron}
           onSelectNeuron={setSelectedNeuron}
           onNetworkLoading={setNetworkLoading}
@@ -262,6 +265,8 @@ function App() {
             onClearSelection={() => setSelectedNeuron(null)}
             simulationEnabled={simulationEnabled}
             speed={simSpeed}
+            stimuli={stimuli}
+            onStimuliChange={setStimuli}
           />
         )}
         {organism && (

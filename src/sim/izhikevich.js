@@ -62,7 +62,7 @@ export const IZH_DESCRIPTIONS = {
   d: 'Increment to recovery variable u after spike (controls post-spike adaptation/bursting).',
 }
 
-export function izhikevichStep(v, u, a, b, c, d, I, dt) {
+export function izhikevichStep(v, u, a, b, c, d, I, dt, vPeak = 30, vCeil = 30) {
   let vv = v
   let uu = u
   let spiked = false
@@ -70,10 +70,13 @@ export function izhikevichStep(v, u, a, b, c, d, I, dt) {
   const du = a * (b * vv - uu)
   vv += dt * dv
   uu += dt * du
-  if (vv >= 30) {
+  if (vv >= vPeak) {
     vv = c
     uu = uu + d
     spiked = true
+  } else if (vv > vCeil) {
+    // Holds v at the shifted peak when spikes are suppressed (TTX block).
+    vv = vCeil
   }
   return { v: vv, u: uu, spiked }
 }

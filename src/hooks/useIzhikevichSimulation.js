@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_PARAMS, izhikevichStep } from '../sim/izhikevich'
 import { beginRun, endRun, pushSpike, recordFrame } from '../sim/simData'
+import {
+  DEFAULT_STIMULI,
+  computeStimuliFrame,
+  createStimuliState,
+} from '../sim/stimuli'
 
 const MAX_FRAME_ELAPSED = 100
 const MAX_STEPS_PER_FRAME = 1000
@@ -18,6 +23,7 @@ export default function useIzhikevichSimulation({
   couplingStrength = 0.01,
   stimulus = 0,
   speed = 1,
+  stimuli = DEFAULT_STIMULI,
 }) {
   const [running, setRunning] = useState(false)
   const simRef = useRef({
@@ -27,6 +33,7 @@ export default function useIzhikevichSimulation({
     params: [],
     spikeTimes: [],
     time: 0,
+    stimuli: createStimuliState(0),
   })
   const spikeTimesRef = useRef([])
   const frameRef = useRef(null)
@@ -58,6 +65,7 @@ export default function useIzhikevichSimulation({
       sim.params = params
       sim.spikeTimes = spikeTimes
       sim.time = 0
+      sim.stimuli = createStimuliState(count)
       spikeTimesRef.current = spikeTimes
       stepAccumRef.current = 0
       beginRun({
@@ -127,6 +135,16 @@ export default function useIzhikevichSimulation({
         neighborMap.get(ai).push(bi)
         neighborMap.get(bi).push(ai)
       })
+      // Chemical modifiers are derived once per frame, not every substep.
+      const frameMs = steps * dt
+      const { fNa, aNa, iK, potassiumActive, vPeak, vCeil } = computeStimuliFrame(
+        stimuli,
+        sim.stimuli,
+        vArr,
+        nodes.length,
+        frameMs,
+      )
+      const zinact = sim.stimuli.zinact
       let simTime = sim.time
       for (let sStep = 0; sStep < steps; sStep += 1) {
         simTime += dt / 1000
@@ -140,8 +158,11 @@ export default function useIzhikevichSimulation({
               I += couplingStrength * (vArr[j] - vArr[i])
             }
           }
+          // Sodium/TTX scale the drive; potassium adds a current and gating block.
+          I = I * fNa * aNa + iK
+          if (potassiumActive) I *= 1 - zinact[i]
           const p = params[i] || DEFAULT_PARAMS
-          const res = izhikevichStep(vArr[i], uArr[i], p.a, p.b, p.c, p.d, I, dt)
+          const res = izhikevichStep(vArr[i], uArr[i], p.a, p.b, p.c, p.d, I, dt, vPeak, vCeil)
           vArr[i] = res.v
           uArr[i] = res.u
           if (res.spiked) {
@@ -155,7 +176,7 @@ export default function useIzhikevichSimulation({
       recordFrame(simTime * 1000, speed)
       frameRef.current = requestAnimationFrame(stepRef.current)
     },
-    [enabled, dt, couplingStrength, speed, nodes.length, connections, stop],
+    [enabled, dt, couplingStrength, speed, nodes.length, connections, stimuli, stop],
   )
 
   useEffect(() => {
