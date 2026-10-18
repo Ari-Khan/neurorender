@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_PARAMS, izhikevichStep } from '../sim/izhikevich'
-import { beginRun, endRun, pushSpike, recordFrame } from '../sim/simData'
+import { beginRun, endRun, pushSpike, recordFrame, simData } from '../sim/simData'
 
 const MAX_FRAME_ELAPSED = 100
 const MAX_STEPS_PER_FRAME = 1000
@@ -8,6 +8,33 @@ const MAX_STEPS_PER_FRAME = 1000
 function hash01(seed) {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
   return value - Math.floor(value)
+}
+
+// Stimulus spec: { kind: 'rest'|'light'|'chemA'|'chemB', side, label }.
+// Mirrors the Python trial builder (neurorender/stimuli.py): light and
+// excitatory chem inject current into afferents on one side, chemB is
+// inhibitory. Afferents are the outer-nerve layer (layer 2); the side
+// comes from the neuron's world x coordinate.
+export function driveFor(node, index, stimulus) {
+  const base = 6 * (0.72 + 0.56 * hash01(index + 13))
+  const spec = stimulus && typeof stimulus === 'object' ? stimulus : null
+  if (!spec || spec.kind === 'rest') return base
+  const isAfferent = node.layer === 2
+  if (!isAfferent) return base
+  const x = node.position?.x ?? 0
+  const sideMatch = spec.side === 'all'
+    || (spec.side === 'left' && x < 0)
+    || (spec.side === 'right' && x >= 0)
+  if (!sideMatch) return base
+  if (spec.kind === 'light') return base + 9
+  if (spec.kind === 'chemA') return base + 7
+  if (spec.kind === 'chemB') return base - 4
+  return base
+}
+
+function stimulusLabel(stimulus) {
+  if (stimulus && typeof stimulus === 'object') return stimulus.label || stimulus.kind || '—'
+  return stimulus
 }
 
 export default function useIzhikevichSimulation({
@@ -33,6 +60,11 @@ export default function useIzhikevichSimulation({
   const lastStepRef = useRef(0)
   const stepAccumRef = useRef(0)
   const stepRef = useRef(null)
+  const stimulusRef = useRef(stimulus)
+
+  useEffect(() => {
+    stimulusRef.current = stimulus
+  }, [stimulus])
 
   const initState = useCallback(
     (paramsPerNeuron) => {
@@ -45,12 +77,11 @@ export default function useIzhikevichSimulation({
         .fill(null)
         .map((_, i) => paramsPerNeuron[i] || DEFAULT_PARAMS)
       const spikeTimes = new Array(count).fill(0)
-      const baseDrive = stimulus > 0 ? stimulus : 10
       for (let i = 0; i < count; i += 1) {
         const r = hash01(i + 1)
         v[i] = -66 + r * 5
         u[i] = params[i].b * v[i] + (hash01(i + 7) - 0.5) * 2
-        drive[i] = baseDrive * (0.72 + 0.56 * hash01(i + 13))
+        drive[i] = driveFor(nodes[i] || { layer: 0, position: null }, i, stimulusRef.current)
       }
       sim.v = v
       sim.u = u
@@ -70,15 +101,25 @@ export default function useIzhikevichSimulation({
         drive,
         v,
         u,
-        stimulus,
+        stimulus: stimulusLabel(stimulusRef.current),
         coupling: couplingStrength,
         dt,
         speed,
       })
       setRunning(true)
     },
-    [nodes.length, stimulus, couplingStrength, dt, speed],
+    [nodes, couplingStrength, dt, speed],
   )
+
+  // Re-apply drive live when the stimulus changes mid-run (no restart).
+  useEffect(() => {
+    const sim = simRef.current
+    if (sim.drive.length === 0 || sim.drive.length !== nodes.length) return
+    for (let i = 0; i < nodes.length; i += 1) {
+      sim.drive[i] = driveFor(nodes[i] || { layer: 0, position: null }, i, stimulus)
+    }
+    simData.stimulus = stimulusLabel(stimulus)
+  }, [stimulus, nodes])
 
   const stop = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current)

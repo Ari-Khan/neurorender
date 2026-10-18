@@ -555,6 +555,7 @@ export default function NeuronNetwork({
   simulationEnabled = false,
   simulationParams = null,
   simulationSpeed = 1,
+  stimulusSpec = { kind: 'rest', side: 'all', label: 'Rest' },
   selectedNeuron = null,
   onSelectNeuron = null,
   onLoadingChange,
@@ -666,7 +667,7 @@ export default function NeuronNetwork({
     connections: simulationConnections,
     enabled: simulationEnabled,
     speed: simulationSpeed,
-    stimulus: 4,
+    stimulus: stimulusSpec,
     couplingStrength: 0.02,
   })
 

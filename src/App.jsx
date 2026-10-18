@@ -3,6 +3,9 @@ import Scene from './three/Scene.jsx'
 import OrganismPanel from './components/OrganismPanel.jsx'
 import SimulationPanel from './components/SimulationPanel.jsx'
 import StatsPanel from './components/StatsPanel.jsx'
+import StimulusBar from './components/StimulusBar.jsx'
+import TrainingResults from './components/TrainingResults.jsx'
+import { buildSampleOrganism } from './demo/sampleTardigrade.js'
 import { resetSimData } from './sim/simData.js'
 import { loadSettings } from './settings.js'
 import './App.css'
@@ -41,6 +44,8 @@ function App() {
   const [simulationParams, setSimulationParams] = useState(null)
   const [simulationOpen, setSimulationOpen] = useState(false)
   const [simSpeed, setSimSpeed] = useState(1)
+  const [stimulusSpec, setStimulusSpec] = useState({ kind: 'rest', side: 'all', label: 'Rest' })
+  const [trainingOpen, setTrainingOpen] = useState(false)
   const [organism, setOrganism] = useState(() => {
     try {
       const saved = localStorage.getItem('neurorender.organism.v1')
@@ -93,6 +98,11 @@ function App() {
     setSimulationOpen(false)
   }, [])
 
+  const loadDemoOrganism = useCallback(() => {
+    setOrganism(buildSampleOrganism())
+    setStimulusSpec({ kind: 'rest', side: 'all', label: 'Rest' })
+  }, [])
+
   return (
     <div className="app">
       <header className="topbar">
@@ -132,8 +142,15 @@ function App() {
           >
             Edit organism
           </button>
-          <button type="button" className="load-organism-btn">
-            Load organism
+          <button type="button" className="load-organism-btn" onClick={loadDemoOrganism}>
+            Load demo organism
+          </button>
+          <button
+            type="button"
+            className="training-results-btn"
+            onClick={() => setTrainingOpen(true)}
+          >
+            Training results
           </button>
           <button
             type="button"
@@ -159,6 +176,7 @@ function App() {
           simulationEnabled={simulationEnabled}
           simulationParams={simulationParams}
           simulationSpeed={simSpeed}
+          stimulusSpec={stimulusSpec}
           selectedNeuron={selectedNeuron}
           onSelectNeuron={setSelectedNeuron}
           onNetworkLoading={setNetworkLoading}
@@ -166,6 +184,9 @@ function App() {
           onNetworkStats={setNetworkStats}
           onCamera={setCameraInfo}
         />
+        {simulationEnabled && (
+          <StimulusBar value={stimulusSpec} onChange={setStimulusSpec} />
+        )}
         {organism && (
           <StatsPanel
             networkStats={networkStats}
@@ -203,6 +224,9 @@ function App() {
             onStart={handleSimulationStart}
             onCancel={() => setSimulationOpen(false)}
           />
+        )}
+        {trainingOpen && (
+          <TrainingResults onClose={() => setTrainingOpen(false)} />
         )}
       </div>
 
