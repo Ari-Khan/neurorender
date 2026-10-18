@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Scene from './three/Scene.jsx'
 import OrganismPanel from './components/OrganismPanel.jsx'
+import SimulationPanel from './components/SimulationPanel.jsx'
 import { loadSettings } from './settings.js'
 import './App.css'
 
@@ -34,6 +35,10 @@ function App() {
   const [layerLoading, setLayerLoading] = useState(false)
   const [networkStats, setNetworkStats] = useState({ neurons: 0, dendrites: 0 })
   const [cameraInfo, setCameraInfo] = useState(null)
+  const [simulationEnabled, setSimulationEnabled] = useState(false)
+  const [simulationParams, setSimulationParams] = useState(null)
+  const [simulationOpen, setSimulationOpen] = useState(false)
+  const [simSpeed, setSimSpeed] = useState(1)
   const [organism, setOrganism] = useState(() => {
     try {
       const saved = localStorage.getItem('neurorender.organism.v1')
@@ -62,6 +67,20 @@ function App() {
 
   const resetView = useCallback(() => setResetKey((k) => k + 1), [])
 
+  const handleSimulateClick = useCallback(() => {
+    if (simulationEnabled) {
+      setSimulationEnabled(false)
+      return
+    }
+    setSimulationOpen(true)
+  }, [simulationEnabled])
+
+  const handleSimulationStart = useCallback((params) => {
+    setSimulationParams(params)
+    setSimulationEnabled(true)
+    setSimulationOpen(false)
+  }, [])
+
   return (
     <div className="app">
       <header className="topbar">
@@ -77,9 +96,9 @@ function App() {
             type="button"
             className="simulate-organism-btn"
             disabled={!organism}
-            onClick={() => {}}
+            onClick={handleSimulateClick}
           >
-            Simulate organism
+            {simulationEnabled ? 'Stop simulation' : 'Simulate organism'}
           </button>
           <button
             type="button"
@@ -125,6 +144,9 @@ function App() {
           gridVisible={gridVisible}
           layersSeparated={layersSeparated}
           highContrast={highContrast}
+          simulationEnabled={simulationEnabled}
+          simulationParams={simulationParams}
+          simulationSpeed={simSpeed}
           onNetworkLoading={setNetworkLoading}
           onLayerLoading={setLayerLoading}
           onNetworkStats={setNetworkStats}
@@ -153,6 +175,12 @@ function App() {
             }}
           />
         )}
+        {simulationOpen && (
+          <SimulationPanel
+            onStart={handleSimulationStart}
+            onCancel={() => setSimulationOpen(false)}
+          />
+        )}
       </div>
 
       <footer className="statusbar">
@@ -162,6 +190,19 @@ function App() {
           <span>Scroll: zoom</span>
           <span>WASD: move</span>
           <span>Q/E: roll</span>
+        </div>
+        <div className="statusbar-group sim-speed-group" aria-label="Simulation speed">
+          <span className="sim-speed-label">Simulation speed</span>
+          {[1, 0.5, 0.25, 0.1].map((speed) => (
+            <button
+              key={speed}
+              type="button"
+              className={`tbtn small sim-speed-btn${simSpeed === speed ? ' active' : ''}`}
+              onClick={() => setSimSpeed(speed)}
+            >
+              {speed}x
+            </button>
+          ))}
         </div>
         <div className="statusbar-group statusbar-view-actions">
           <button

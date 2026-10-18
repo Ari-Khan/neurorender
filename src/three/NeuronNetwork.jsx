@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import useIzhikevichSimulation from '../hooks/useIzhikevichSimulation'
 
 const LAYER_COLORS = [
   [240, 138, 138],
@@ -539,6 +540,9 @@ export default function NeuronNetwork({
   organism,
   layersSeparated = false,
   highContrast = false,
+  simulationEnabled = false,
+  simulationParams = null,
+  simulationSpeed = 1,
   onLoadingChange,
   onLayerLoading,
   onNetworkStats,
@@ -608,39 +612,134 @@ export default function NeuronNetwork({
     }
   }, [organism])
 
-  const pointGeometry = useMemo(() => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(nodes.flatMap((node) => {
-        const position = node.position.clone()
-        position.z += layerOffset(node, separation, depth, organism.length)
-        return position.toArray()
-      }), 3),
-    )
-    if (highContrast) {
-      geometry.setAttribute(
-        'color',
-        new THREE.Float32BufferAttribute(nodes.flatMap((node) => (
-          new THREE.Color(HIGH_CONTRAST_COLORS[node.layer]).toArray()
-        )), 3),
-      )
+  const [flashNow, setFlashNow] = useState(() => performance.now())
+  useFrame(() => {
+    if (simulationEnabled) setFlashNow(performance.now())
+  })
+
+  const worldPositions = useMemo(() => nodes.map((node) => node.position), [nodes])
+  const simulationConnections = useMemo(() => {
+    if (nodes.length === 0) return []
+    const connectionsSet = new Set()
+    for (let i = 0; i < nodes.length; i += 1) {
+      let bestJ = -1
+      let bestDist = Infinity
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const d = worldPositions[i].distanceToSquared(worldPositions[j])
+        if (d < bestDist) {
+          bestDist = d
+          bestJ = j
+        }
+      }
+      if (bestJ >= 0) connectionsSet.add(`${i}-${bestJ}`)
     }
-    return geometry
-  }, [nodes, separation, depth, organism.length, highContrast])
+    return Array.from(connectionsSet)
+  }, [nodes, worldPositions])
+
+  const simulation = useIzhikevichSimulation({
+    nodes,
+    connections: simulationConnections,
+    enabled: simulationEnabled,
+    speed: simulationSpeed,
+    stimulus: 4,
+    couplingStrength: 0.02,
+  })
+
+  const { init: initSim } = simulation
+  useEffect(() => {
+    if (!simulationEnabled) return
+    if (nodes.length === 0) return
+    const paramsPerNeuron = nodes.map(() => simulationParams || null)
+    initSim(paramsPerNeuron)
+  }, [simulationEnabled, nodes, simulationParams, initSim])
+
+  const spikeTimes = simulation.spikeTimes
+  const flashDuration = 100
+
+  const glowTexture = useMemo(() => {
+    const size = 64
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const context = canvas.getContext('2d')
+    const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+    gradient.addColorStop(0, 'rgba(255,255,255,1)')
+    gradient.addColorStop(0.3, 'rgba(255,255,255,0.72)')
+    gradient.addColorStop(0.6, 'rgba(255,255,255,0.26)')
+    gradient.addColorStop(1, 'rgba(255,255,255,0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, size, size)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.needsUpdate = true
+    return texture
+  }, [])
+
+  const { pointGeometry, glowGeometry } = useMemo(() => {
+    const t = flashNow
+    const pos = new Float32Array(nodes.length * 3)
+    const colors = new Float32Array(nodes.length * 3)
+    const glowColors = new Float32Array(nodes.length * 3)
+    const green = new THREE.Color('#39ff14')
+    const base = new THREE.Color()
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i]
+      const position = node.position.clone()
+      position.z += layerOffset(node, separation, depth, organism.length)
+      const st = spikeTimes[i]
+      const age = simulationEnabled && st ? t - st : Infinity
+      const flash = age < flashDuration ? Math.exp(-age / 24) : 0
+      pos[i * 3] = position.x
+      pos[i * 3 + 1] = position.y
+      pos[i * 3 + 2] = position.z
+
+      if (highContrast) base.set(HIGH_CONTRAST_COLORS[node.layer])
+      else base.set('#d6d6d6')
+      if (flash > 0) base.lerp(green, Math.min(1, flash))
+      colors[i * 3] = base.r
+      colors[i * 3 + 1] = base.g
+      colors[i * 3 + 2] = base.b
+
+      const glowLevel = Math.min(1, flash * 1.4)
+      glowColors[i * 3] = green.r * glowLevel
+      glowColors[i * 3 + 1] = green.g * glowLevel
+      glowColors[i * 3 + 2] = green.b * glowLevel
+    }
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    const glow = new THREE.BufferGeometry()
+    glow.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3))
+    glow.setAttribute('color', new THREE.BufferAttribute(glowColors, 3))
+    return { pointGeometry: geom, glowGeometry: glow }
+  }, [nodes, separation, depth, organism.length, highContrast, simulationEnabled, spikeTimes, flashNow])
 
   if (nodes.length === 0) return null
+  const hasFlash = simulationEnabled && spikeTimes.some((s) => s && flashNow - s < flashDuration)
   return (
     <group position={[0, 0.08, 0]}>
-      <points geometry={pointGeometry}>
+      <points geometry={pointGeometry} frustumCulled={false}>
         <pointsMaterial
-          key={highContrast ? 'high' : 'normal'}
-          color={highContrast ? '#ffffff' : '#d6d6d6'}
-          vertexColors={highContrast}
+          color="#ffffff"
+          vertexColors
           size={0.34}
           sizeAttenuation
         />
       </points>
+      {hasFlash && (
+        <points geometry={glowGeometry} frustumCulled={false}>
+          <pointsMaterial
+            vertexColors
+            map={glowTexture}
+            size={3.6}
+            sizeAttenuation
+            transparent
+            opacity={1}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            toneMapped={false}
+          />
+        </points>
+      )}
       <NetworkLinks
         nodes={nodes}
         separation={separation}

@@ -145,6 +145,140 @@
   cursor: not-allowed;
 }
 
+.simulation-panel {
+  width: min(520px, calc(100% - 72px));
+  height: auto;
+  max-height: calc(100% - 120px);
+}
+
+.simulation-body {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 22px 18px;
+}
+
+.sim-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sim-section-title {
+  color: #888;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.sim-field {
+  display: grid;
+  gap: 6px;
+}
+
+.sim-field label {
+  color: #aaa;
+  font-size: 12px;
+}
+
+.sim-select,
+.sim-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #111;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+
+.sim-select {
+  cursor: pointer;
+}
+
+.sim-select:hover,
+.sim-input:hover {
+  border-color: #4a4a4a;
+}
+
+.sim-select:focus,
+.sim-input:focus {
+  outline: none;
+  border-color: #7b5fd9;
+}
+
+.sim-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sim-range {
+  color: #666;
+  font-size: 10.5px;
+}
+
+.sim-description {
+  margin: 0;
+  color: #9a9a9a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sim-help {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sim-help-row {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.sim-help-row dt {
+  flex: 0 0 14px;
+  color: #7b5fd9;
+  font-weight: 700;
+}
+
+.sim-help-row dd {
+  margin: 0;
+  color: #9a9a9a;
+}
+
+.sim-equations {
+  padding: 8px 11px;
+  border: 1px solid #242424;
+  border-radius: 7px;
+  background: #0b0b0b;
+  color: #777;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.simulation-foot {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px;
+}
+
+.simulation-foot > span {
+  flex: 1 1 100%;
+  color: #666;
+  font-size: 11px;
+}
+
 .topbar-actions {
   display: flex;
   gap: 8px;
@@ -739,4 +873,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sim-speed-group {
+  gap: 6px;
+}
+
+.sim-speed-label {
+  color: #777;
+  font-size: 11px;
+}
+
+.sim-speed-btn {
+  min-width: 50px;
+  text-align: center;
+  border-color: #3a3a3a;
+  background: #3a3a3a;
+}
+
+.sim-speed-btn:hover {
+  border-color: #4f4f4f;
+  background: #4f4f4f;
+}
+
+.sim-speed-btn.active {
+  border-color: #6f6f6f;
+  background: #6f6f6f;
+  color: #fff;
 }

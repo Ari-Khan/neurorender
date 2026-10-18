@@ -12,6 +12,9 @@ const Scene = memo(function Scene({
   gridVisible,
   layersSeparated,
   highContrast,
+  simulationEnabled,
+  simulationParams,
+  simulationSpeed = 1,
   onNetworkLoading,
   onLayerLoading,
   onNetworkStats,
@@ -31,6 +34,9 @@ const Scene = memo(function Scene({
           organism={organism}
           layersSeparated={layersSeparated}
           highContrast={highContrast}
+          simulationEnabled={simulationEnabled}
+          simulationParams={simulationParams}
+          simulationSpeed={simulationSpeed}
           onLoadingChange={onNetworkLoading}
           onLayerLoading={onLayerLoading}
           onNetworkStats={onNetworkStats}
