@@ -1,13 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import useIzhikevichSimulation from '../hooks/useIzhikevichSimulation'
-
-const LAYER_COLORS = [
-  [240, 138, 138],
-  [127, 183, 238],
-  [232, 199, 107],
-]
+import { LAYER_COLORS, setNetworkLayout } from '../sim/simData'
 
 const LAYER_ALLOCATION = [0.35, 0.4, 0.25]
 const LAYER_DENSITY = [1.2, 1.2, 0.8]
@@ -19,7 +14,22 @@ const LAYER_ANIMATION_STEPS = 60
 const LAYER_FRAME_INTERVAL = 1
 const HIGH_CONTRAST_COLORS = ['#ff4d4d', '#4db8ff', '#ff9d3d']
 const FLASH_GREEN = new THREE.Color('#39ff14')
+const SELECT_PURPLE = new THREE.Color('#b44cff')
+const SELECT_PURPLE_HEX = '#b44cff'
 const FLASH_DURATION = 100
+const FLASH_GLOW_SIZE = 3.6
+const SELECT_MARKER_SIZE = FLASH_GLOW_SIZE * 2
+const SYNAPSE_SIZE = 0.34
+const PICK_MIN_PX = 8
+const PICK_SCALE = 1.4
+
+const baseColorScratch = new THREE.Color()
+
+function layerBaseColor(layer, highContrast) {
+  if (highContrast) baseColorScratch.set(HIGH_CONTRAST_COLORS[layer])
+  else baseColorScratch.set('#d6d6d6')
+  return baseColorScratch
+}
 
 function colorDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
@@ -545,6 +555,8 @@ export default function NeuronNetwork({
   simulationEnabled = false,
   simulationParams = null,
   simulationSpeed = 1,
+  selectedNeuron = null,
+  onSelectNeuron = null,
   onLoadingChange,
   onLayerLoading,
   onNetworkStats,
@@ -613,6 +625,22 @@ export default function NeuronNetwork({
       cancelled = true
     }
   }, [organism])
+
+  useEffect(() => {
+    const count = nodes.length
+    const layers = new Int8Array(count)
+    const positions = new Float32Array(count * 3)
+    const layerCounts = [0, 0, 0]
+    for (let i = 0; i < count; i += 1) {
+      const node = nodes[i]
+      layers[i] = node.layer
+      layerCounts[node.layer] += 1
+      positions[i * 3] = node.position.x
+      positions[i * 3 + 1] = node.position.y
+      positions[i * 3 + 2] = node.position.z
+    }
+    setNetworkLayout({ layers, positions, layerCounts, neuronCount: count })
+  }, [nodes])
 
   const worldPositions = useMemo(() => nodes.map((node) => node.position), [nodes])
   const simulationConnections = useMemo(() => {
@@ -705,13 +733,134 @@ export default function NeuronNetwork({
 
   const pointsRef = useRef(null)
   const glowRef = useRef(null)
+  const highlightRef = useRef(null)
   const flashActiveRef = useRef(false)
+  const appliedSelRef = useRef(null)
+  const appliedGeomRef = useRef(null)
+
+  const camera = useThree((state) => state.camera)
+  const gl = useThree((state) => state.gl)
+  useEffect(() => {
+    const element = gl.domElement
+    const down = { x: 0, y: 0, button: 0, active: false }
+    const onPointerDown = (event) => {
+      down.x = event.clientX
+      down.y = event.clientY
+      down.button = event.button
+      down.active = true
+    }
+    const onPointerCancel = () => {
+      down.active = false
+    }
+    const onPointerUp = (event) => {
+      if (!down.active) return
+      down.active = false
+      if (down.button !== 0 || event.button !== 0) return
+      if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return
+      const points = pointsRef.current
+      const attribute = points?.geometry?.attributes?.position
+      if (!attribute) return
+      points.updateWorldMatrix(true, false)
+      const rect = element.getBoundingClientRect()
+      const width = rect.width || 1
+      const height = rect.height || 1
+      const mouseX = event.clientX - rect.left
+      const mouseY = event.clientY - rect.top
+      const tanHalfFov = Math.tan(THREE.MathUtils.degToRad((camera.fov || 55) * 0.5))
+      const array = attribute.array
+      const count = attribute.count
+      const v = new THREE.Vector3()
+      let best = -1
+      let bestDist2 = Infinity
+      let bestDepth = Infinity
+      for (let i = 0; i < count; i += 1) {
+        const i3 = i * 3
+        v.set(array[i3], array[i3 + 1], array[i3 + 2])
+        v.applyMatrix4(points.matrixWorld)
+        const dist = v.distanceTo(camera.position)
+        if (dist <= 0.0001) continue
+        const radiusPx = (SYNAPSE_SIZE * 0.5 * height) / (2 * tanHalfFov * dist)
+        const thresholdPx = Math.max(PICK_MIN_PX, radiusPx * PICK_SCALE)
+        v.project(camera)
+        if (v.z < -1 || v.z > 1) continue
+        const sx = (v.x * 0.5 + 0.5) * width
+        const sy = (0.5 - v.y * 0.5) * height
+        const dx = sx - mouseX
+        const dy = sy - mouseY
+        const dist2 = dx * dx + dy * dy
+        if (dist2 > thresholdPx * thresholdPx) continue
+        if (dist2 < bestDist2 - 1 || (dist2 <= bestDist2 + 1 && v.z < bestDepth)) {
+          best = i
+          bestDist2 = dist2
+          bestDepth = v.z
+        }
+      }
+      if (best < 0) return
+      onSelectNeuron?.(best === selectedNeuron ? null : best)
+    }
+    element.addEventListener('pointerdown', onPointerDown)
+    element.addEventListener('pointerup', onPointerUp)
+    element.addEventListener('pointercancel', onPointerCancel)
+    return () => {
+      element.removeEventListener('pointerdown', onPointerDown)
+      element.removeEventListener('pointerup', onPointerUp)
+      element.removeEventListener('pointercancel', onPointerCancel)
+    }
+  }, [camera, gl, nodes, selectedNeuron, onSelectNeuron])
+
   useFrame(() => {
     const points = pointsRef.current
     const glow = glowRef.current
     if (!points || !glow) return
     const currentPointGeometry = points.geometry
     const currentGlowGeometry = glow.geometry
+    const selected = selectedNeuron != null
+      && selectedNeuron >= 0
+      && selectedNeuron < nodes.length
+      ? selectedNeuron
+      : null
+    if (appliedSelRef.current !== selected || appliedGeomRef.current !== currentPointGeometry) {
+      const baseAttr = currentPointGeometry.attributes.baseColor
+      const colorAttr = currentPointGeometry.attributes.color
+      const baseArr = baseAttr.array
+      const colorArr = colorAttr.array
+      const sameGeometry = appliedGeomRef.current === currentPointGeometry
+      const previous = appliedSelRef.current
+      if (sameGeometry && previous != null && previous !== selected
+        && previous * 3 + 2 < baseArr.length) {
+        const shade = layerBaseColor(nodes[previous].layer, highContrast)
+        baseArr[previous * 3] = shade.r
+        baseArr[previous * 3 + 1] = shade.g
+        baseArr[previous * 3 + 2] = shade.b
+        colorArr[previous * 3] = shade.r
+        colorArr[previous * 3 + 1] = shade.g
+        colorArr[previous * 3 + 2] = shade.b
+      }
+      if (selected != null) {
+        const i3 = selected * 3
+        baseArr[i3] = SELECT_PURPLE.r
+        baseArr[i3 + 1] = SELECT_PURPLE.g
+        baseArr[i3 + 2] = SELECT_PURPLE.b
+        colorArr[i3] = SELECT_PURPLE.r
+        colorArr[i3 + 1] = SELECT_PURPLE.g
+        colorArr[i3 + 2] = SELECT_PURPLE.b
+      }
+      baseAttr.needsUpdate = true
+      colorAttr.needsUpdate = true
+      appliedSelRef.current = selected
+      appliedGeomRef.current = currentPointGeometry
+    }
+    const highlight = highlightRef.current
+    if (highlight) {
+      if (selected != null) {
+        const posArr = currentPointGeometry.attributes.position.array
+        const si3 = selected * 3
+        highlight.position.set(posArr[si3], posArr[si3 + 1], posArr[si3 + 2])
+        highlight.visible = true
+      } else {
+        highlight.visible = false
+      }
+    }
     const colors = currentPointGeometry.attributes.color.array
     const base = currentPointGeometry.attributes.baseColor.array
     const glowColors = currentGlowGeometry.attributes.color.array
@@ -754,7 +903,7 @@ export default function NeuronNetwork({
         <pointsMaterial
           color="#ffffff"
           vertexColors
-          size={0.34}
+          size={SYNAPSE_SIZE}
           sizeAttenuation
         />
       </points>
@@ -762,7 +911,7 @@ export default function NeuronNetwork({
         <pointsMaterial
           vertexColors
           map={glowTexture}
-          size={3.6}
+          size={FLASH_GLOW_SIZE}
           sizeAttenuation
           transparent
           opacity={1}
@@ -771,6 +920,17 @@ export default function NeuronNetwork({
           toneMapped={false}
         />
       </points>
+      <sprite ref={highlightRef} visible={false} scale={SELECT_MARKER_SIZE}>
+        <spriteMaterial
+          map={glowTexture}
+          color={SELECT_PURPLE_HEX}
+          transparent
+          opacity={1}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </sprite>
       <NetworkLinks
         nodes={nodes}
         separation={separation}

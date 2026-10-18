@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_PARAMS, izhikevichStep } from '../sim/izhikevich'
+import { beginRun, endRun, pushSpike, recordFrame } from '../sim/simData'
 
 const MAX_FRAME_ELAPSED = 100
 const MAX_STEPS_PER_FRAME = 1000
@@ -19,7 +20,14 @@ export default function useIzhikevichSimulation({
   speed = 1,
 }) {
   const [running, setRunning] = useState(false)
-  const simRef = useRef({ v: [], u: [], drive: [], params: [], spikeTimes: [], time: 0 })
+  const simRef = useRef({
+    v: [],
+    u: [],
+    drive: [],
+    params: [],
+    spikeTimes: [],
+    time: 0,
+  })
   const spikeTimesRef = useRef([])
   const frameRef = useRef(null)
   const lastStepRef = useRef(0)
@@ -52,14 +60,30 @@ export default function useIzhikevichSimulation({
       sim.time = 0
       spikeTimesRef.current = spikeTimes
       stepAccumRef.current = 0
+      beginRun({
+        neuronCount: count,
+        spikeCounts: new Int32Array(count),
+        firstSpike: new Float64Array(count),
+        lastSpike: new Float64Array(count),
+        spikeTimes,
+        params,
+        drive,
+        v,
+        u,
+        stimulus,
+        coupling: couplingStrength,
+        dt,
+        speed,
+      })
       setRunning(true)
     },
-    [nodes.length, stimulus],
+    [nodes.length, stimulus, couplingStrength, dt, speed],
   )
 
   const stop = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current)
     frameRef.current = null
+    endRun()
     setRunning(false)
   }, [])
 
@@ -120,10 +144,15 @@ export default function useIzhikevichSimulation({
           const res = izhikevichStep(vArr[i], uArr[i], p.a, p.b, p.c, p.d, I, dt)
           vArr[i] = res.v
           uArr[i] = res.u
-          if (res.spiked) spikeTimes[i] = simTime * 1000
+          if (res.spiked) {
+            const tMs = simTime * 1000
+            spikeTimes[i] = tMs
+            pushSpike(i, tMs)
+          }
         }
       }
       sim.time = simTime
+      recordFrame(simTime * 1000, speed)
       frameRef.current = requestAnimationFrame(stepRef.current)
     },
     [enabled, dt, couplingStrength, speed, nodes.length, connections, stop],
@@ -139,6 +168,7 @@ export default function useIzhikevichSimulation({
         cancelAnimationFrame(frameRef.current)
         frameRef.current = null
       }
+      endRun()
       return undefined
     }
     if (frameRef.current) return undefined

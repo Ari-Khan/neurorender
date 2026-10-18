@@ -15,6 +15,8 @@ const Scene = memo(function Scene({
   simulationEnabled,
   simulationParams,
   simulationSpeed = 1,
+  selectedNeuron,
+  onSelectNeuron,
   onNetworkLoading,
   onLayerLoading,
   onNetworkStats,
@@ -37,6 +39,8 @@ const Scene = memo(function Scene({
           simulationEnabled={simulationEnabled}
           simulationParams={simulationParams}
           simulationSpeed={simulationSpeed}
+          selectedNeuron={selectedNeuron}
+          onSelectNeuron={onSelectNeuron}
           onLoadingChange={onNetworkLoading}
           onLayerLoading={onLayerLoading}
           onNetworkStats={onNetworkStats}

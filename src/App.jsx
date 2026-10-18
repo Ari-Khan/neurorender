@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Scene from './three/Scene.jsx'
 import OrganismPanel from './components/OrganismPanel.jsx'
 import SimulationPanel from './components/SimulationPanel.jsx'
+import StatsPanel from './components/StatsPanel.jsx'
+import { resetSimData } from './sim/simData.js'
 import { loadSettings } from './settings.js'
 import './App.css'
 
@@ -47,6 +49,16 @@ function App() {
       return null
     }
   })
+  const [selectedNeuron, setSelectedNeuron] = useState(null)
+  const lastOrganismRef = useRef(organism)
+
+  useEffect(() => {
+    if (lastOrganismRef.current === organism) return
+    lastOrganismRef.current = organism
+    resetSimData()
+    setSelectedNeuron(null)
+    setNetworkStats({ neurons: 0, dendrites: 0 })
+  }, [organism])
 
   useEffect(() => {
     try {
@@ -147,11 +159,22 @@ function App() {
           simulationEnabled={simulationEnabled}
           simulationParams={simulationParams}
           simulationSpeed={simSpeed}
+          selectedNeuron={selectedNeuron}
+          onSelectNeuron={setSelectedNeuron}
           onNetworkLoading={setNetworkLoading}
           onLayerLoading={setLayerLoading}
           onNetworkStats={setNetworkStats}
           onCamera={setCameraInfo}
         />
+        {organism && (
+          <StatsPanel
+            networkStats={networkStats}
+            selectedNeuron={selectedNeuron}
+            onClearSelection={() => setSelectedNeuron(null)}
+            simulationEnabled={simulationEnabled}
+            speed={simSpeed}
+          />
+        )}
         {organism && (
           <ScaleReadout cameraInfo={cameraInfo} />
         )}
