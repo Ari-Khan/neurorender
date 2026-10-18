@@ -9,11 +9,124 @@ const LAYER_COLORS = [
 ]
 
 const LAYER_ALLOCATION = [0.35, 0.4, 0.25]
-const CONNECTION_DISTANCE = [0.022, 0.024, 0.026]
-const CROSS_LAYER_DISTANCE = 0.022
+const LAYER_DENSITY = [1.2, 1.2, 0.8]
+const AREA_ALLOCATION_WEIGHT = 0.6
+const MIN_LAYER_ALLOCATION = 0.08
+const CONNECTION_DISTANCE = [0.028, 0.04, 0.08]
+const CROSS_LAYER_DISTANCE = 0.032
+const LAYER_ANIMATION_STEPS = 60
+const LAYER_FRAME_INTERVAL = 1
+const HIGH_CONTRAST_COLORS = ['#ff4d4d', '#4db8ff', '#ff9d3d']
 
 function colorDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+}
+
+function hash01(seed) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
+  return value - Math.floor(value)
+}
+
+function selectScattered(candidates, count) {
+  if (candidates.length <= count) return candidates
+  const bounds = candidates.reduce((result, candidate) => ({
+    minX: Math.min(result.minX, candidate.x),
+    maxX: Math.max(result.maxX, candidate.x),
+    minY: Math.min(result.minY, candidate.y),
+    maxY: Math.max(result.maxY, candidate.y),
+  }), {
+    minX: Infinity,
+    maxX: -Infinity,
+    minY: Infinity,
+    maxY: -Infinity,
+  })
+  const width = Math.max(1, bounds.maxX - bounds.minX)
+  const height = Math.max(1, bounds.maxY - bounds.minY)
+  const columns = Math.max(1, Math.round(Math.sqrt(count * width / height)))
+  const rows = Math.max(1, Math.ceil(count / columns))
+  const buckets = Array.from({ length: columns * rows }, () => [])
+
+  const bucketIndexOf = (candidate) => {
+    const column = Math.min(
+      columns - 1,
+      Math.floor(((candidate.x - bounds.minX) / width) * columns),
+    )
+    const row = Math.min(
+      rows - 1,
+      Math.floor(((candidate.y - bounds.minY) / height) * rows),
+    )
+    return row * columns + column
+  }
+
+  candidates.forEach((candidate) => {
+    buckets[bucketIndexOf(candidate)].push(candidate)
+  })
+
+  const picked = new Set()
+  const selected = []
+  const pickCounts = Array.from({ length: buckets.length }, () => 0)
+  const pickFrom = (bucket, bucketIndex) => {
+    if (bucket.length === 0) return false
+    const column = bucketIndex % columns
+    const row = Math.floor(bucketIndex / columns)
+    const targetX = bounds.minX
+      + ((column + hash01(bucketIndex * 7 + pickCounts[bucketIndex] + 3)) * width) / columns
+    const targetY = bounds.minY
+      + ((row + hash01(bucketIndex * 13 + pickCounts[bucketIndex] + 5)) * height) / rows
+    let closest = null
+    let closestDistance = Infinity
+    for (const candidate of bucket) {
+      if (picked.has(candidate)) continue
+      const distance = (candidate.x - targetX) ** 2 + (candidate.y - targetY) ** 2
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closest = candidate
+      }
+    }
+    if (!closest) return false
+    picked.add(closest)
+    selected.push(closest)
+    pickCounts[bucketIndex] += 1
+    return true
+  }
+
+  buckets.forEach((bucket, bucketIndex) => pickFrom(bucket, bucketIndex))
+
+  while (selected.length > count) {
+    let removeIndex = 0
+    let removeScore = -Infinity
+    selected.forEach((candidate, index) => {
+      const score = hash01(candidate.x * 97 + candidate.y * 31 + index)
+      if (score > removeScore) {
+        removeScore = score
+        removeIndex = index
+      }
+    })
+    const removed = selected[removeIndex]
+    picked.delete(removed)
+    pickCounts[bucketIndexOf(removed)] -= 1
+    selected.splice(removeIndex, 1)
+  }
+
+  while (selected.length < count) {
+    let bestBucket = -1
+    let bestScore = Infinity
+    buckets.forEach((bucket, bucketIndex) => {
+      let remaining = 0
+      bucket.forEach((candidate) => {
+        if (!picked.has(candidate)) remaining += 1
+      })
+      if (remaining === 0) return
+      const score = pickCounts[bucketIndex] + hash01(bucketIndex * 17 + 1) * 0.4
+      if (score < bestScore) {
+        bestScore = score
+        bestBucket = bucketIndex
+      }
+    })
+    if (bestBucket < 0 || !pickFrom(buckets[bestBucket], bestBucket)) break
+  }
+
+  return selected
 }
 
 function sampleMask(data, width, height, count, length, depthPercent) {
@@ -99,45 +212,89 @@ function sampleMask(data, width, height, count, length, depthPercent) {
   }
   const targetCount = Math.min(count, 2500)
   const selected = []
-  layerCandidates.forEach((layer, layerIndex) => {
-    if (layer.length === 0) return
-    const layerCount = Math.min(
-      layer.length,
-      Math.max(1, Math.round(targetCount * LAYER_ALLOCATION[layerIndex])),
-    )
-    const layerStep = layer.length / layerCount
-    for (let index = 0; index < layerCount; index += 1) {
-      selected.push({
-        candidate: layer[Math.min(layer.length - 1, Math.floor(index * layerStep))],
-        index: selected.length,
-      })
+  const presentLayers = layerCandidates
+    .map((layer, layerIndex) => ({ layer, layerIndex }))
+    .filter(({ layer }) => layer.length > 0)
+  const totalArea = presentLayers.reduce(
+    (total, { layer, layerIndex }) => total + layer.length * LAYER_DENSITY[layerIndex],
+    0,
+  )
+  const totalBaseline = presentLayers.reduce(
+    (total, { layerIndex }) => total + LAYER_ALLOCATION[layerIndex],
+    0,
+  )
+  const allocations = presentLayers.map(({ layer, layerIndex }) => {
+    const baselineShare = LAYER_ALLOCATION[layerIndex] / totalBaseline
+    const areaShare = (layer.length * LAYER_DENSITY[layerIndex]) / totalArea
+    return {
+      layer,
+      layerIndex,
+      share: Math.max(
+        MIN_LAYER_ALLOCATION,
+        baselineShare * (1 - AREA_ALLOCATION_WEIGHT) + areaShare * AREA_ALLOCATION_WEIGHT,
+      ),
     }
   })
+  const allocationTotal = allocations.reduce((total, item) => total + item.share, 0)
+  const layerCounts = allocations.map(({ layer, share }) => {
+    const raw = (targetCount * share) / allocationTotal
+    return {
+      layer,
+      count: Math.min(layer.length, Math.floor(raw)),
+      priority: raw - Math.floor(raw),
+    }
+  })
+  let remaining = targetCount - layerCounts.reduce((total, item) => total + item.count, 0)
+  while (remaining !== 0) {
+    let best = null
+    for (const item of layerCounts) {
+      if (remaining > 0 && item.count >= item.layer.length) continue
+      if (remaining < 0 && item.count <= 0) continue
+      if (!best || item.priority > best.priority) best = item
+    }
+    if (!best) break
+    best.count += remaining > 0 ? 1 : -1
+    best.priority = remaining > 0 ? -Infinity : Infinity
+    remaining += remaining > 0 ? -1 : 1
+  }
+  layerCounts.forEach(({ layer, count }) => {
+    selectScattered(layer, count).forEach((candidate) => {
+      selected.push({ candidate, index: selected.length })
+    })
+  })
   return selected.map(({ candidate, index }) => {
-    const jitter = Math.sin(index * 12.9898) * 0.35
+    const jitterX = (hash01(index * 12.9898 + 1) - 0.5) * 4
+    const jitterY = (hash01(index * 78.233 + 2) - 0.5) * 4
+    const wave = Math.sin(candidate.x * 0.035 + Math.cos(candidate.y * 0.021) * 2.4) * 0.5
+    const grain = (hash01(index * 5.19 + 9.7) - 0.5) * 0.4
     return {
       layer: candidate.layer,
       position: new THREE.Vector3(
-        ((candidate.x / width) - 0.5) * length,
-        (0.5 - candidate.y / height) * widthInWorld,
-        jitter * depth * 0.02,
+        (((candidate.x + jitterX) / width) - 0.5) * length,
+        (0.5 - (candidate.y + jitterY) / height) * widthInWorld,
+        (wave + grain) * depth * 0.5,
       ),
     }
   })
 }
 
-function createDendriteGeometry(curve) {
+function createDendriteGeometry(curve, startColor, endColor) {
   const tubularSegments = 8
   const radialSegments = 5
   const radius = 0.045
   const frames = curve.computeFrenetFrames(tubularSegments, false)
   const positions = []
   const indices = []
+  const colors = []
+  const colorStart = startColor ? new THREE.Color(startColor) : null
+  const colorEnd = endColor ? new THREE.Color(endColor) : colorStart
+  const shade = new THREE.Color()
 
   for (let segment = 0; segment <= tubularSegments; segment += 1) {
     const t = segment / tubularSegments
     const center = curve.getPointAt(t)
     const taper = 0.35 + 0.65 * Math.abs(2 * t - 1)
+    if (colorStart) shade.copy(colorStart).lerp(colorEnd, t)
     for (let radial = 0; radial < radialSegments; radial += 1) {
       const angle = (radial / radialSegments) * Math.PI * 2
       const offset = frames.normals[segment].clone().multiplyScalar(
@@ -148,6 +305,7 @@ function createDendriteGeometry(curve) {
         Math.sin(angle) * radius * taper,
       )
       positions.push(center.x + offset.x, center.y + offset.y, center.z + offset.z)
+      if (colorStart) colors.push(shade.r, shade.g, shade.b)
     }
   }
 
@@ -169,13 +327,14 @@ function createDendriteGeometry(curve) {
 
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  if (colorStart) geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
   return geometry
 }
 
 function layerOffset(node, separation, depth, length) {
-  return (node.layer - 1) * separation * Math.max(depth * 0.08, length * 0.012)
+  return (node.layer - 1) * separation * Math.max(depth * 0.8, length * 0.12)
 }
 
 function worldPosition(node, separation, depth, length) {
@@ -189,25 +348,30 @@ function spatialKey(x, y, z) {
 }
 
 function DendriteLink({ connection, nodes, separation, depth, length, highContrast }) {
+  const [startIndex, endIndex] = connection.split('-').map(Number)
+  const startLayer = nodes[startIndex].layer
+  const endLayer = nodes[endIndex].layer
   const geometry = useMemo(() => {
-    const [startIndex, endIndex] = connection.split('-').map(Number)
     const start = worldPosition(nodes[startIndex], separation, depth, length)
     const end = worldPosition(nodes[endIndex], separation, depth, length)
     const midpoint = start.clone().lerp(end, 0.5)
     midpoint.y += Math.sin(endIndex * 1.7) * 0.35
-    return createDendriteGeometry(new THREE.CatmullRomCurve3([start, midpoint, end]))
-  }, [connection, nodes, separation, depth, length])
+    const curve = new THREE.CatmullRomCurve3([start, midpoint, end])
+    if (!highContrast) return createDendriteGeometry(curve)
+    return createDendriteGeometry(
+      curve,
+      HIGH_CONTRAST_COLORS[startLayer],
+      HIGH_CONTRAST_COLORS[endLayer],
+    )
+  }, [nodes, separation, depth, length, highContrast, startIndex, endIndex, startLayer, endLayer])
 
-  const [startIndex, endIndex] = connection.split('-').map(Number)
   return (
     <mesh>
       <primitive object={geometry} attach="geometry" />
       <meshBasicMaterial
-        color={
-          highContrast
-            ? (nodes[startIndex].layer === nodes[endIndex].layer ? '#ff9d3d' : '#4db8ff')
-            : '#9b9b9b'
-        }
+        key={highContrast ? 'high' : 'normal'}
+        color={highContrast ? '#ffffff' : '#9b9b9b'}
+        vertexColors={highContrast}
         transparent
         opacity={highContrast ? 0.9 : 0.42}
       />
@@ -215,7 +379,15 @@ function DendriteLink({ connection, nodes, separation, depth, length, highContra
   )
 }
 
-function NetworkLinks({ nodes, separation, depth, length, highContrast, onLoadingChange }) {
+function NetworkLinks({
+  nodes,
+  separation,
+  depth,
+  length,
+  highContrast,
+  onLoadingChange,
+  onNetworkStats,
+}) {
   const connections = useMemo(() => {
     const connections = new Set()
     const worldPositions = nodes.map((node) => worldPosition(node, 0, depth, length))
@@ -262,6 +434,30 @@ function NetworkLinks({ nodes, separation, depth, length, highContrast, onLoadin
         }
       }
     }
+    const linked = new Array(nodes.length).fill(false)
+    connections.forEach((connection) => {
+      const [first, second] = connection.split('-').map(Number)
+      linked[first] = true
+      linked[second] = true
+    })
+    nodes.forEach((_, first) => {
+      if (linked[first]) return
+      let best = -1
+      let bestDistance = Infinity
+      nodes.forEach((_, second) => {
+        if (second === first) return
+        const distance = worldPositions[first].distanceToSquared(worldPositions[second])
+        if (distance < bestDistance) {
+          bestDistance = distance
+          best = second
+        }
+      })
+      if (best >= 0) {
+        connections.add(`${Math.min(first, best)}-${Math.max(first, best)}`)
+        linked[first] = true
+        linked[best] = true
+      }
+    })
     const parents = nodes.map((_, index) => index)
     const find = (index) => {
       while (parents[index] !== index) {
@@ -306,6 +502,7 @@ function NetworkLinks({ nodes, separation, depth, length, highContrast, onLoadin
   const [visibleCount, setVisibleCount] = useState(0)
 
   useEffect(() => {
+    onNetworkStats?.({ neurons: nodes.length, dendrites: connections.length })
     onLoadingChange?.(connections.length > 0)
     if (connections.length === 0) {
       onLoadingChange?.(false)
@@ -319,7 +516,7 @@ function NetworkLinks({ nodes, separation, depth, length, highContrast, onLoadin
       })
     }, 24)
     return () => window.clearInterval(timer)
-  }, [connections, onLoadingChange])
+  }, [connections, nodes.length, onLoadingChange, onNetworkStats])
 
   return (
     <group>
@@ -344,28 +541,43 @@ export default function NeuronNetwork({
   highContrast = false,
   onLoadingChange,
   onLayerLoading,
+  onNetworkStats,
 }) {
   const [nodes, setNodes] = useState([])
   const [separation, setSeparation] = useState(0)
   const separationRef = useRef(0)
-  const layerBatchRef = useRef(0)
+  const layerFrameRef = useRef(0)
+  const layerLoadingRef = useRef(false)
   const depth = organism.length * Math.max(0.01, organism.depthPercent / 100)
   useFrame(() => {
     const target = layersSeparated ? 1 : 0
     const current = separationRef.current
-    if (Math.abs(current - target) > 0.01) {
-      const next = current + (target - current) * 0.14
-      separationRef.current = next
-      layerBatchRef.current += Math.abs(next - current)
-      onLayerLoading?.(true)
-      if (layerBatchRef.current >= 0.04 || Math.abs(next - target) <= 0.01) {
-        layerBatchRef.current = 0
-        setSeparation(next)
+    if (current === target) {
+      layerFrameRef.current = 0
+      if (layerLoadingRef.current) {
+        layerLoadingRef.current = false
+        onLayerLoading?.(false)
       }
-    } else if (current !== target) {
-      separationRef.current = target
-      layerBatchRef.current = 0
-      setSeparation(target)
+      return
+    }
+
+    if (!layerLoadingRef.current) {
+      layerLoadingRef.current = true
+      onLayerLoading?.(true)
+    }
+    layerFrameRef.current += 1
+    if (layerFrameRef.current < LAYER_FRAME_INTERVAL) return
+
+    layerFrameRef.current = 0
+    const direction = target > current ? 1 : -1
+    const step = 1 / LAYER_ANIMATION_STEPS
+    const next = Math.abs(target - current) <= step
+      ? target
+      : current + direction * step
+    separationRef.current = next
+    setSeparation(next)
+    if (next === target) {
+      layerLoadingRef.current = false
       onLayerLoading?.(false)
     }
   })
@@ -406,14 +618,28 @@ export default function NeuronNetwork({
         return position.toArray()
       }), 3),
     )
+    if (highContrast) {
+      geometry.setAttribute(
+        'color',
+        new THREE.Float32BufferAttribute(nodes.flatMap((node) => (
+          new THREE.Color(HIGH_CONTRAST_COLORS[node.layer]).toArray()
+        )), 3),
+      )
+    }
     return geometry
-  }, [nodes, separation, depth, organism.length])
+  }, [nodes, separation, depth, organism.length, highContrast])
 
   if (nodes.length === 0) return null
   return (
     <group position={[0, 0.08, 0]}>
       <points geometry={pointGeometry}>
-        <pointsMaterial color="#d6d6d6" size={0.34} sizeAttenuation />
+        <pointsMaterial
+          key={highContrast ? 'high' : 'normal'}
+          color={highContrast ? '#ffffff' : '#d6d6d6'}
+          vertexColors={highContrast}
+          size={0.34}
+          sizeAttenuation
+        />
       </points>
       <NetworkLinks
         nodes={nodes}
@@ -422,6 +648,7 @@ export default function NeuronNetwork({
         length={organism.length}
         highContrast={highContrast}
         onLoadingChange={onLoadingChange}
+        onNetworkStats={onNetworkStats}
       />
     </group>
   )

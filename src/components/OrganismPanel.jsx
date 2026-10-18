@@ -95,6 +95,8 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
   const fileInputRef = useRef(null)
   const drawingRef = useRef(false)
   const lastPointRef = useRef(null)
+  const historyRef = useRef([])
+  const historyIndexRef = useRef(-1)
   const [imageLoaded, setImageLoaded] = useState(Boolean(initialOrganism))
   const [imageSource, setImageSource] = useState(initialOrganism?.background || '')
   const [drawingSource, setDrawingSource] = useState(initialOrganism?.drawing || '')
@@ -113,8 +115,8 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
   const [acceptedPreview, setAcceptedPreview] = useState('')
   const [acceptedBackground, setAcceptedBackground] = useState('')
   const [acceptedSize, setAcceptedSize] = useState({ width: 0, height: 0 })
-  const [depthPercent, setDepthPercent] = useState(String(initialOrganism?.depthPercent ?? 50))
-  const [neuronCount, setNeuronCount] = useState(String(initialOrganism?.neuronCount ?? 500))
+  const [depthPercent, setDepthPercent] = useState(String(initialOrganism?.depthPercent ?? 10))
+  const [neuronCount, setNeuronCount] = useState(String(initialOrganism?.neuronCount ?? 600))
   const [organismLength, setOrganismLength] = useState(String(initialOrganism?.length ?? 500))
 
   const activeColor = TOOLS.find((tool) => tool.id === activeTool)?.color || '#000'
@@ -208,6 +210,57 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
     updateWidth()
     return () => observer.disconnect()
   }, [imageLoaded])
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault()
+        undo()
+      }
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+        event.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
+
+  const saveHistory = () => {
+    const canvas = drawingCanvasRef.current
+    if (!canvas) return
+    const data = canvas.toDataURL()
+    const index = historyIndexRef.current
+    historyRef.current = historyRef.current.slice(0, index + 1)
+    historyRef.current.push(data)
+    if (historyRef.current.length > 50) {
+      historyRef.current.shift()
+    }
+    historyIndexRef.current = historyRef.current.length - 1
+  }
+
+  const restoreHistory = (index) => {
+    const canvas = drawingCanvasRef.current
+    if (!canvas || index < 0 || index >= historyRef.current.length) return
+    const data = historyRef.current[index]
+    const context = canvas.getContext('2d')
+    const image = new Image()
+    image.onload = () => {
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      validate()
+    }
+    image.src = data
+    historyIndexRef.current = index
+  }
+
+  const undo = () => {
+    restoreHistory(historyIndexRef.current - 1)
+  }
+
+  const redo = () => {
+    restoreHistory(historyIndexRef.current + 1)
+  }
 
   const pointFromEvent = (event) => {
     const canvas = drawingCanvasRef.current
@@ -359,11 +412,14 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
                   onPointerUp={() => {
                     drawingRef.current = false
                     lastPointRef.current = null
+                    saveHistory()
                     validate()
                   }}
                   onPointerCancel={() => {
                     drawingRef.current = false
                     lastPointRef.current = null
+                    saveHistory()
+                    validate()
                   }}
                   />
                 </div>
@@ -407,6 +463,7 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
                   if (!canvas) return
                   const context = canvas.getContext('2d')
                   context.clearRect(0, 0, canvas.width, canvas.height)
+                  saveHistory()
                   validate()
                 }}>
                   Clear drawing

@@ -252,6 +252,10 @@ export default function CameraRig({ settings, resetKey, onCamera }) {
         position: camera.position.toArray(),
         target: st.target.toArray(),
         dist: st.dist,
+        horizontalWorldUnitsPerPixel: (
+          2 * st.dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+          * camera.aspect
+        ) / Math.max(1, gl.domElement.clientWidth),
       })
     }
   })

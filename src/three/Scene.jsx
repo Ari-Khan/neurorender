@@ -14,6 +14,7 @@ const Scene = memo(function Scene({
   highContrast,
   onNetworkLoading,
   onLayerLoading,
+  onNetworkStats,
 }) {
   const background = '#000000'
   return (
@@ -32,6 +33,7 @@ const Scene = memo(function Scene({
           highContrast={highContrast}
           onLoadingChange={onNetworkLoading}
           onLayerLoading={onLayerLoading}
+          onNetworkStats={onNetworkStats}
         />
       )}
     </Canvas>

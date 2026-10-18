@@ -4,17 +4,20 @@ import OrganismPanel from './components/OrganismPanel.jsx'
 import { loadSettings } from './settings.js'
 import './App.css'
 
-function ScaleReadout({ organismLength, cameraInfo }) {
-  const viewDistance = cameraInfo?.dist || organismLength
-  const targetLength = Math.max(1, Math.min(organismLength, viewDistance * 0.2))
+function ScaleReadout({ cameraInfo }) {
+  const worldUnitsPerPixel = cameraInfo?.horizontalWorldUnitsPerPixel || 1
+  const targetLength = worldUnitsPerPixel * 100
   const exponent = Math.floor(Math.log10(targetLength))
-  const scaleLength = Math.max(1, 10 ** exponent)
-  const width = Math.min(150, Math.max(50, (scaleLength / targetLength) * 100))
+  const base = 10 ** exponent
+  const scaleLength = [1, 2, 5, 10]
+    .reverse()
+    .map((factor) => factor * base)
+    .find((value) => value <= targetLength) || base / 10
 
   return (
     <div className="scale-readout" aria-label="Organism scale">
-      <span className="scale-line" style={{ width: `${width}px` }} />
-      <span>{scaleLength} μm</span>
+      <span className="scale-line" />
+      <span>{Number(scaleLength.toPrecision(3))} μm</span>
     </div>
   )
 }
@@ -29,6 +32,7 @@ function App() {
   const [highContrast, setHighContrast] = useState(false)
   const [networkLoading, setNetworkLoading] = useState(false)
   const [layerLoading, setLayerLoading] = useState(false)
+  const [networkStats, setNetworkStats] = useState({ neurons: 0, dendrites: 0 })
   const [cameraInfo, setCameraInfo] = useState(null)
   const [organism, setOrganism] = useState(() => {
     try {
@@ -61,7 +65,13 @@ function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">NeuroRender</div>
+        <div className="brand-group">
+          <div className="brand">NeuroRender</div>
+          <div className="network-stats" aria-label="Network statistics">
+            <span>{organism ? networkStats.neurons : 0} neurons</span>
+            <span>{organism ? networkStats.dendrites : 0} dendrites</span>
+          </div>
+        </div>
         <div className="topbar-actions">
           <button
             type="button"
@@ -100,10 +110,11 @@ function App() {
           highContrast={highContrast}
           onNetworkLoading={setNetworkLoading}
           onLayerLoading={setLayerLoading}
+          onNetworkStats={setNetworkStats}
           onCamera={setCameraInfo}
         />
         {organism && (
-          <ScaleReadout organismLength={organism.length} cameraInfo={cameraInfo} />
+          <ScaleReadout cameraInfo={cameraInfo} />
         )}
         {networkLoading && (
           <div className="network-loading" role="status">
@@ -128,30 +139,39 @@ function App() {
       </div>
 
       <footer className="statusbar">
-        <button
-          type="button"
-          className="tbtn contrast-toggle"
-          onClick={() => setHighContrast((enabled) => !enabled)}
-        >
-          Contrast {highContrast ? 'high' : 'normal'}
-        </button>
-        <button
-          type="button"
-          className="tbtn layer-toggle"
-          onClick={() => setLayersSeparated((separated) => !separated)}
-        >
-          Layers {layersSeparated ? 'separate' : 'combined'}
-        </button>
-        <button
-          type="button"
-          className="tbtn grid-toggle"
-          onClick={() => setGridVisible((visible) => !visible)}
-        >
-          Grid {gridVisible ? 'on' : 'off'}
-        </button>
-        <button type="button" className="tbtn" onClick={resetView}>
-          Reset view
-        </button>
+        <div className="controls" aria-label="Navigation controls">
+          <span>Left drag: rotate</span>
+          <span>Right drag: pan</span>
+          <span>Scroll: zoom</span>
+          <span>WASD: move</span>
+          <span>Q/E: roll</span>
+        </div>
+        <div className="statusbar-group statusbar-view-actions">
+          <button
+            type="button"
+            className="tbtn contrast-toggle"
+            onClick={() => setHighContrast((enabled) => !enabled)}
+          >
+            Contrast {highContrast ? 'high' : 'normal'}
+          </button>
+          <button
+            type="button"
+            className="tbtn layer-toggle"
+            onClick={() => setLayersSeparated((separated) => !separated)}
+          >
+            Layers {layersSeparated ? 'separate' : 'combined'}
+          </button>
+          <button
+            type="button"
+            className="tbtn grid-toggle"
+            onClick={() => setGridVisible((visible) => !visible)}
+          >
+            Grid {gridVisible ? 'on' : 'off'}
+          </button>
+          <button type="button" className="tbtn" onClick={resetView}>
+            Reset view
+          </button>
+        </div>
       </footer>
     </div>
   )
