@@ -1,0 +1,3 @@
+# NeuroRender training core
+numpy>=1.26
+matplotlib>=3.7   # figures only; the sim itself needs just numpy
