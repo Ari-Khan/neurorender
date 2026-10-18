@@ -302,9 +302,9 @@ export default function StatsPanel({
                         label="Position"
                         value={`${fmt(d.positions[p3] ?? 0, 1)}, ${fmt(d.positions[p3 + 1] ?? 0, 1)}, ${fmt(d.positions[p3 + 2] ?? 0, 1)}`}
                       />
-                      <Row label="Input drive" value={fmt(drive ?? 0, 2)} />
-                      <Row label="Membrane v" value={`${fmt(v ?? 0, 1)} mV`} />
-                      <Row label="Recovery u" value={fmt(u ?? 0, 2)} />
+                      <Row label="Input drive (I)" value={fmt(drive ?? 0, 2)} />
+                      <Row label="Membrane mV (v)" value={fmt(v ?? 0, 1)} />
+                      <Row label="Recovery mV/ms (u)" value={fmt(u ?? 0, 2)} />
                     </section>
                     <section>
                       <h4>Activity</h4>
@@ -358,8 +358,8 @@ export default function StatsPanel({
                 />
                 <Row label="Sim time" value={`${fmt(d.simTimeMs / 1000, 2)} s`} />
                 <Row label="Speed" value={simulationEnabled ? `${speed}x` : '—'} />
-                <Row label="Stimulus" value={d.stimulus ? String(d.stimulus) : '—'} />
-                <Row label="Coupling g" value={d.coupling ? String(d.coupling) : '—'} />
+                <Row label="Stimulus (I)" value={d.stimulus ? String(d.stimulus) : '—'} />
+                <Row label="Coupling 1/ms (g)" value={d.coupling ? String(d.coupling) : '—'} />
                 <Row label="Total spikes" value={String(d.totalSpikes)} />
                 <Row label="Population rate" value={`${fmt(popRate, 1)} Hz`} />
                 {LAYER_NAMES.map((name, layer) => (

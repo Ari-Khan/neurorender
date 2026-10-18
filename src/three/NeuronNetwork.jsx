@@ -1,9 +1,11 @@
+// Turns a cleared organism map into a living neuron network with dendrites.
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import useIzhikevichSimulation from '../hooks/useIzhikevichSimulation'
 import { LAYER_COLORS, setNetworkLayout } from '../sim/simData'
 
+// Layout and look-and-feel tuning for the sampled network.
 const LAYER_ALLOCATION = [0.35, 0.4, 0.25]
 const LAYER_DENSITY = [1.2, 1.2, 0.8]
 const AREA_ALLOCATION_WEIGHT = 0.6
@@ -23,6 +25,7 @@ const SYNAPSE_SIZE = 0.34
 const PICK_MIN_PX = 8
 const PICK_SCALE = 1.4
 
+// Scratch color plus a helper for a neuron's resting color.
 const baseColorScratch = new THREE.Color()
 
 function layerBaseColor(layer, highContrast) {
@@ -31,15 +34,18 @@ function layerBaseColor(layer, highContrast) {
   return baseColorScratch
 }
 
+// Simple RGB distance, used to sort map pixels into layers.
 function colorDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 }
 
+// Cheap deterministic pseudo-random in [0, 1) for stable jitter and noise.
 function hash01(seed) {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
   return value - Math.floor(value)
 }
 
+// Picks a spread-out subset of candidates so neurons don't clump together.
 function selectScattered(candidates, count) {
   if (candidates.length <= count) return candidates
   const bounds = candidates.reduce((result, candidate) => ({
@@ -142,6 +148,7 @@ function selectScattered(candidates, count) {
   return selected
 }
 
+// Reads the traced map and turns it into node positions across the three layers.
 function sampleMask(data, width, height, count, length, depthPercent) {
   const candidates = []
   for (let y = 0; y < height; y += 2) {
@@ -291,6 +298,7 @@ function sampleMask(data, width, height, count, length, depthPercent) {
   })
 }
 
+// Builds a tapered tube geometry for one dendrite strand.
 function createDendriteGeometry(curve, startColor, endColor) {
   const tubularSegments = 8
   const radialSegments = 5
@@ -346,20 +354,24 @@ function createDendriteGeometry(curve, startColor, endColor) {
   return geometry
 }
 
+// Pushes each layer apart along Z when the layers toggle flips.
 function layerOffset(node, separation, depth, length) {
   return (node.layer - 1) * separation * Math.max(depth * 0.8, length * 0.12)
 }
 
+// Node position in world space, including the current layer separation.
 function worldPosition(node, separation, depth, length) {
   const position = node.position.clone()
   position.z += layerOffset(node, separation, depth, length)
   return position
 }
 
+// Key for the spatial grid used when wiring up dendrites.
 function spatialKey(x, y, z) {
   return `${x},${y},${z}`
 }
 
+// A single dendrite strand linking two neurons.
 const DendriteLink = memo(function DendriteLink({ connection, nodes, separation, depth, length, highContrast }) {
   const [startIndex, endIndex] = connection.split('-').map(Number)
   const startLayer = nodes[startIndex].layer
@@ -392,6 +404,7 @@ const DendriteLink = memo(function DendriteLink({ connection, nodes, separation,
   )
 })
 
+// Figures out which neurons connect, then fades the dendrites in slowly.
 function NetworkLinks({
   nodes,
   separation,
@@ -548,6 +561,7 @@ function NetworkLinks({
   )
 }
 
+// The whole neuron network: samples the organism, animates layers, runs the sim.
 export default function NeuronNetwork({
   organism,
   layersSeparated = false,
@@ -561,12 +575,14 @@ export default function NeuronNetwork({
   onLayerLoading,
   onNetworkStats,
 }) {
+  // Sampled nodes plus the animated layer separation value.
   const [nodes, setNodes] = useState([])
   const [separation, setSeparation] = useState(0)
   const separationRef = useRef(0)
   const layerFrameRef = useRef(0)
   const layerLoadingRef = useRef(false)
   const depth = organism.length * Math.max(0.01, organism.depthPercent / 100)
+  // Eases the layers apart or back together when the toggle changes.
   useFrame(() => {
     const target = layersSeparated ? 1 : 0
     const current = separationRef.current
@@ -600,6 +616,7 @@ export default function NeuronNetwork({
     }
   })
 
+  // Loads the organism drawing and samples it into nodes.
   useEffect(() => {
     let cancelled = false
     const image = new Image()
@@ -626,6 +643,7 @@ export default function NeuronNetwork({
     }
   }, [organism])
 
+  // Mirrors the sampled layout into the shared stats store.
   useEffect(() => {
     const count = nodes.length
     const layers = new Int8Array(count)
@@ -642,7 +660,9 @@ export default function NeuronNetwork({
     setNetworkLayout({ layers, positions, layerCounts, neuronCount: count })
   }, [nodes])
 
+  // Cached node positions for the distance-based wiring below.
   const worldPositions = useMemo(() => nodes.map((node) => node.position), [nodes])
+  // Links every neuron to its nearest neighbor for the simulation graph.
   const simulationConnections = useMemo(() => {
     if (nodes.length === 0) return []
     const connectionsSet = new Set()
@@ -661,6 +681,7 @@ export default function NeuronNetwork({
     return Array.from(connectionsSet)
   }, [nodes, worldPositions])
 
+  // Hook that steps the Izhikevich model and records every spike.
   const simulation = useIzhikevichSimulation({
     nodes,
     connections: simulationConnections,
@@ -670,6 +691,7 @@ export default function NeuronNetwork({
     couplingStrength: 0.02,
   })
 
+  // Starts a fresh run whenever the sim turns on or the params change.
   const { init: initSim, getTime } = simulation
   useEffect(() => {
     if (!simulationEnabled) return
@@ -680,6 +702,7 @@ export default function NeuronNetwork({
 
   const spikeTimesRef = simulation.spikeTimes
 
+  // Soft radial sprite reused by the spike flashes and the selection marker.
   const glowTexture = useMemo(() => {
     const size = 64
     const canvas = document.createElement('canvas')
@@ -698,6 +721,7 @@ export default function NeuronNetwork({
     return texture
   }, [])
 
+  // Point buffers for the neurons plus the additive glow layer.
   const { pointGeometry, glowGeometry } = useMemo(() => {
     const pos = new Float32Array(nodes.length * 3)
     const colors = new Float32Array(nodes.length * 3)
@@ -731,13 +755,16 @@ export default function NeuronNetwork({
     return { pointGeometry: geom, glowGeometry: glow }
   }, [nodes, separation, depth, organism.length, highContrast])
 
+  // Refs to the rendered objects we mutate during the frame loop.
   const pointsRef = useRef(null)
   const glowRef = useRef(null)
   const highlightRef = useRef(null)
+  // Tracks what the color buffers currently hold so we only repaint on change.
   const flashActiveRef = useRef(false)
   const appliedSelRef = useRef(null)
   const appliedGeomRef = useRef(null)
 
+  // Screen-space picking: grabs whichever neuron sits nearest the cursor in 2D.
   const camera = useThree((state) => state.camera)
   const gl = useThree((state) => state.gl)
   useEffect(() => {
@@ -808,6 +835,7 @@ export default function NeuronNetwork({
     }
   }, [camera, gl, nodes, selectedNeuron, onSelectNeuron])
 
+  // Per-frame update: selection highlight, spike flashes, and glow.
   useFrame(() => {
     const points = pointsRef.current
     const glow = glowRef.current
@@ -896,9 +924,11 @@ export default function NeuronNetwork({
     flashActiveRef.current = any
   })
 
+  // Nothing to draw until the organism map has been sampled.
   if (nodes.length === 0) return null
   return (
     <group position={[0, 0.08, 0]}>
+      {/* The neurons themselves. */}
       <points ref={pointsRef} geometry={pointGeometry} frustumCulled={false}>
         <pointsMaterial
           color="#ffffff"
@@ -907,6 +937,7 @@ export default function NeuronNetwork({
           sizeAttenuation
         />
       </points>
+      {/* Additive glow that lights up when neurons fire. */}
       <points ref={glowRef} geometry={glowGeometry} frustumCulled={false} visible={false}>
         <pointsMaterial
           vertexColors
@@ -920,6 +951,7 @@ export default function NeuronNetwork({
           toneMapped={false}
         />
       </points>
+      {/* Big purple marker showing the currently selected neuron. */}
       <sprite ref={highlightRef} visible={false} scale={SELECT_MARKER_SIZE}>
         <spriteMaterial
           map={glowTexture}
@@ -931,6 +963,7 @@ export default function NeuronNetwork({
           toneMapped={false}
         />
       </sprite>
+      {/* Dendrites scaffolding the neurons together. */}
       <NetworkLinks
         nodes={nodes}
         separation={separation}

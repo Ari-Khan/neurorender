@@ -7,6 +7,33 @@ import { resetSimData } from './sim/simData.js'
 import { loadSettings } from './settings.js'
 import './App.css'
 
+// Loads the saved organism library, seeding it from the last used organism.
+function loadOrganisms() {
+  try {
+    const raw = localStorage.getItem('neurorender.organisms.v1')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+    const current = localStorage.getItem('neurorender.organism.v1')
+    if (current) {
+      const organism = JSON.parse(current)
+      if (organism) return [{ ...organism, name: organism.name || 'Organism 1' }]
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+// Picks the next free "Organism N" style default name.
+function nextOrganismName(organisms) {
+  const used = new Set(organisms.map((item) => item.name))
+  let index = organisms.length + 1
+  while (used.has(`Organism ${index}`)) index += 1
+  return `Organism ${index}`
+}
+
 function ScaleReadout({ cameraInfo }) {
   const worldUnitsPerPixel = cameraInfo?.horizontalWorldUnitsPerPixel || 1
   const targetLength = worldUnitsPerPixel * 100
@@ -44,12 +71,17 @@ function App() {
   const [organism, setOrganism] = useState(() => {
     try {
       const saved = localStorage.getItem('neurorender.organism.v1')
-      return saved ? JSON.parse(saved) : null
+      if (!saved) return null
+      const parsed = JSON.parse(saved)
+      if (parsed && !parsed.name) parsed.name = 'Organism 1'
+      return parsed
     } catch {
       return null
     }
   })
   const [selectedNeuron, setSelectedNeuron] = useState(null)
+  const [organisms, setOrganisms] = useState(loadOrganisms)
+  const [loadOpen, setLoadOpen] = useState(false)
   const lastOrganismRef = useRef(organism)
 
   useEffect(() => {
@@ -77,6 +109,14 @@ function App() {
     }
   }, [organism])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('neurorender.organisms.v1', JSON.stringify(organisms))
+    } catch {
+      // storage unavailable — ignore
+    }
+  }, [organisms])
+
   const resetView = useCallback(() => setResetKey((k) => k + 1), [])
 
   const handleSimulateClick = useCallback(() => {
@@ -92,6 +132,27 @@ function App() {
     setSimulationEnabled(true)
     setSimulationOpen(false)
   }, [])
+
+  const handleLoadOrganism = useCallback((saved) => {
+    setOrganism(saved)
+    setLoadOpen(false)
+  }, [])
+
+  const handleOrganismClose = useCallback((nextOrganism) => {
+    setNewOrganismOpen(false)
+    if (!nextOrganism) return
+    setOrganism(nextOrganism)
+    setOrganisms((current) => {
+      const previousName = panelMode === 'edit' ? organism?.name : null
+      return current
+        .filter((item) => item.name !== nextOrganism.name && item.name !== previousName)
+        .concat(nextOrganism)
+    })
+  }, [panelMode, organism])
+
+  const defaultOrganismName = panelMode === 'edit' && organism?.name
+    ? organism.name
+    : nextOrganismName(organisms)
 
   return (
     <div className="app">
@@ -132,9 +193,37 @@ function App() {
           >
             Edit organism
           </button>
-          <button type="button" className="load-organism-btn">
-            Load organism
-          </button>
+          <div className="load-menu-wrap">
+            <button
+              type="button"
+              className="load-organism-btn"
+              disabled={organisms.length === 0}
+              onClick={() => setLoadOpen((open) => !open)}
+            >
+              Load organism
+            </button>
+            {loadOpen && organisms.length > 0 && (
+              <>
+                <div
+                  className="load-menu-backdrop"
+                  onClick={() => setLoadOpen(false)}
+                />
+                <div className="load-menu" role="menu" aria-label="Saved organisms">
+                  {organisms.map((item) => (
+                    <button
+                      key={item.name}
+                      type="button"
+                      role="menuitem"
+                      className={`load-menu-item${organism?.name === item.name ? ' active' : ''}`}
+                      onClick={() => handleLoadOrganism(item)}
+                    >
+                      {item.name || 'Untitled organism'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             type="button"
             className="new-organism-btn"
@@ -192,10 +281,8 @@ function App() {
           <OrganismPanel
             key={panelMode}
             initialOrganism={panelMode === 'edit' ? organism : null}
-            onClose={(nextOrganism) => {
-              if (nextOrganism) setOrganism(nextOrganism)
-              setNewOrganismOpen(false)
-            }}
+            defaultName={defaultOrganismName}
+            onClose={handleOrganismClose}
           />
         )}
         {simulationOpen && (

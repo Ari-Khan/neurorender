@@ -75,8 +75,75 @@
   transition: background 0.12s ease;
 }
 
-.load-organism-btn:hover {
+.load-organism-btn:hover:not(:disabled) {
   background: #82c9ef;
+}
+
+.load-organism-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.load-menu-wrap {
+  position: relative;
+}
+
+.load-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.load-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 150px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: grid;
+  gap: 1px;
+  padding: 4px;
+  background: #1b1b1b;
+  border: 1px solid #333;
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  z-index: 41;
+  animation: load-menu-in 140ms ease-out both;
+}
+
+@keyframes load-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.load-menu-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #ddd;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.load-menu-item:hover {
+  background: #2c2c2c;
+}
+
+.load-menu-item.active {
+  background: #2f4d5c;
+  color: #fff;
 }
 
 .edit-organism-btn {
@@ -632,6 +699,10 @@
   gap: 7px;
   color: #aaa;
   font-size: 12px;
+}
+
+.organism-fields label.field-wide {
+  grid-column: 1 / -1;
 }
 
 .organism-fields input {

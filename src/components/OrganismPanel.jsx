@@ -88,7 +88,7 @@ function validateDrawing(canvas) {
   return { valid: true, message: 'Map ready to accept.' }
 }
 
-export default function OrganismPanel({ initialOrganism, onClose }) {
+export default function OrganismPanel({ initialOrganism, onClose, defaultName }) {
   const imageCanvasRef = useRef(null)
   const drawingCanvasRef = useRef(null)
   const canvasWrapRef = useRef(null)
@@ -118,6 +118,9 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
   const [depthPercent, setDepthPercent] = useState(String(initialOrganism?.depthPercent ?? 10))
   const [neuronCount, setNeuronCount] = useState(String(initialOrganism?.neuronCount ?? 600))
   const [organismLength, setOrganismLength] = useState(String(initialOrganism?.length ?? 500))
+  const [organismName, setOrganismName] = useState(
+    initialOrganism?.name || defaultName || 'Organism 1',
+  )
 
   const activeColor = TOOLS.find((tool) => tool.id === activeTool)?.color || '#000'
   const displayScale = availableWidth > 0 ? availableWidth / imageSize.width : 1
@@ -315,6 +318,15 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
               <img src={acceptedPreview} alt="Annotated nerve map" />
             </div>
             <div className="organism-fields">
+              <label className="field-wide">
+                <span>Organism name</span>
+                <input
+                  type="text"
+                  value={organismName}
+                  onChange={(event) => setOrganismName(event.target.value)}
+                  placeholder="Organism name"
+                />
+              </label>
               <label>
                 <span>Organism length (μm)</span>
                 <input
@@ -362,6 +374,7 @@ export default function OrganismPanel({ initialOrganism, onClose }) {
                 className="accept-organism-btn"
                 disabled={!neuronCount || Number(neuronCount) < 1}
                 onClick={() => onClose({
+                  name: organismName.trim() || defaultName || 'Organism 1',
                   drawing: acceptedImage,
                   background: acceptedBackground,
                   length: Number(organismLength),
