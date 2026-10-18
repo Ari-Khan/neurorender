@@ -1,3 +1,6 @@
+// Orbit/pan/zoom camera controls. Keeps a small mutable state object (current
+// and desired orientation/distance/target) and eases the current toward the
+// desired each frame, which gives everything a smooth, damped feel.
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -7,11 +10,13 @@ const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'])
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 
+// How far the camera target can wander, widening as you zoom out.
 function panLimit(st, settings) {
   const zoomAllowance = Math.min(4, settings.worldSize / Math.max(2, st.dDist))
   return settings.worldSize * (0.65 + zoomAllowance)
 }
 
+// Don't hijack WASD while the user is typing in a field.
 function isTypingTarget(target) {
   if (!target || !target.tagName) return false
   return (
@@ -21,6 +26,7 @@ function isTypingTarget(target) {
   )
 }
 
+// Snaps the desired view back to the default framing.
 function resetState(st, settings) {
   const target = new THREE.Vector3(0, 0, 0)
   st.dYaw = 0.65
@@ -31,6 +37,8 @@ function resetState(st, settings) {
     .setFromEuler(new THREE.Euler(-st.dPitch, st.dYaw, 0, 'YXZ'))
 }
 
+// Builds the control state: `dX` fields are the desired values, the plain ones
+// are where the camera actually is right now.
 function createState(settings) {
   const st = {
     yaw: 0,
@@ -79,10 +87,12 @@ export default function CameraRig({ settings, resetKey, onCamera }) {
     onCameraRef.current = onCamera
   })
 
+  // Re-frame the camera whenever the host bumps the reset key.
   useEffect(() => {
     resetState(getState(), settingsRef.current)
   }, [resetKey])
 
+  // Mouse/keyboard input: left drag orbits, right drag pans, wheel zooms.
   useEffect(() => {
     const dom = gl.domElement
     const drag = { mode: null, lastX: 0, lastY: 0, pointerId: -1 }
@@ -188,6 +198,7 @@ export default function CameraRig({ settings, resetKey, onCamera }) {
     }
   }, [gl, camera, tmp])
 
+  // Per-frame: apply keyboard motion, then ease current values toward desired.
   useFrame((_, delta) => {
     const st = getState()
     const cfg = settingsRef.current
@@ -236,15 +247,18 @@ export default function CameraRig({ settings, resetKey, onCamera }) {
       st.dTarget.y = clamp(st.dTarget.y, -up * 0.2, up)
     }
 
+    // Exponential smoothing — one damping factor drives all three transitions.
     const k = 1 - Math.exp(-dt * cfg.damping)
     st.orientation.slerp(st.dOrientation, k)
     st.dist += (st.dDist - st.dist) * k
     st.target.lerp(st.dTarget, k)
 
+    // Place the camera on the orbit sphere looking at the target.
     tmp.offset.set(0, 0, st.dist).applyQuaternion(st.orientation)
     camera.position.copy(st.target).add(tmp.offset)
     camera.quaternion.copy(st.orientation)
 
+    // Report camera state upward at ~20 Hz (used for the scale readout).
     st.reportAcc += dt
     if (st.reportAcc > 0.05 && onCameraRef.current) {
       st.reportAcc = 0

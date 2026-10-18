@@ -1,5 +1,11 @@
+// A single mutable store shared by the simulation and the UI. The sim writes to
+// it every frame; the stats panel reads it. Kept out of React state on purpose —
+// it changes far too often to re-render on.
+
+// Spikes kept in the ring buffer before the oldest get overwritten.
 export const HISTORY_CAPACITY = 80000
 
+// Brain / VN / ON layer colors.
 export const LAYER_COLORS = [
   [240, 138, 138],
   [127, 183, 238],
@@ -37,6 +43,7 @@ export const simData = {
   speed: 1,
 }
 
+// Blanks the store back to "nothing running".
 export function resetSimData() {
   simData.running = false
   simData.neuronCount = 0
@@ -61,6 +68,7 @@ export function resetSimData() {
   simData.speed = 1
 }
 
+// Points the store at a fresh run's arrays (reusing the ones the sim allocated).
 export function beginRun(info) {
   simData.running = true
   simData.neuronCount = info.neuronCount
@@ -86,12 +94,14 @@ export function endRun() {
   simData.running = false
 }
 
+// Called once per rendered frame with the latest clock/speed.
 export function recordFrame(simTimeMs, speed) {
   simData.running = true
   simData.simTimeMs = simTimeMs
   simData.speed = speed
 }
 
+// Records a spike: bumps counters and drops it into the ring buffer.
 export function pushSpike(index, tMs) {
   simData.spikeCounts[index] += 1
   simData.totalSpikes += 1
@@ -109,6 +119,7 @@ export function pushSpike(index, tMs) {
   }
 }
 
+// Publishes the sampled neuron layout so the stats panel knows what to draw.
 export function setNetworkLayout(layout) {
   simData.layers = layout.layers
   simData.positions = layout.positions
@@ -116,6 +127,8 @@ export function setNetworkLayout(layout) {
   simData.neuronCount = layout.neuronCount
 }
 
+// Walks the ring buffer oldest→newest and visits spikes inside [fromMs, toMs].
+// Stops early once it passes toMs since the buffer is time-ordered.
 export function forEachSpikeInRange(data, fromMs, toMs, visit) {
   const cap = data.histIdx.length
   const len = data.histCount
@@ -129,6 +142,7 @@ export function forEachSpikeInRange(data, fromMs, toMs, visit) {
   }
 }
 
+// Convenience count over the same range.
 export function countSpikesInRange(data, fromMs, toMs) {
   let n = 0
   forEachSpikeInRange(data, fromMs, toMs, () => {

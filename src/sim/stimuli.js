@@ -47,16 +47,16 @@ export const DEFAULT_STIMULI = {
 }
 
 // Physiology constants (assumed where the model needs a concrete number).
-export const E_NA_REF = 55
-export const V_REST = -65
-export const V_PEAK_REF = 30
-export const KAPPA = 0.15
-export const A_CRIT = 0.3
-export const IC50_TTX = 1
-export const Z_HALF = -45
-export const Z_SLOPE = 5
-export const Z_TAU = 30
-export const TTX_K_ON = 0.05
+export const E_NA_REF = 55 // sodium reversal at baseline (mV)
+export const V_REST = -65 // resting membrane potential (mV)
+export const V_PEAK_REF = 30 // baseline spike peak (mV)
+export const KAPPA = 0.15 // how strongly a shift in E_K drives I_K
+export const A_CRIT = 0.3 // sodium availability below which spikes die out
+export const IC50_TTX = 1 // TTX concentration at half block
+export const Z_HALF = -45 // half-activation voltage of the K block gate (mV)
+export const Z_SLOPE = 5 // steepness of that gate (mV)
+export const Z_TAU = 30 // gate time constant (ms)
+export const TTX_K_ON = 0.05 // TTX binding rate
 
 function clamp01(value) {
   if (value < 0) return 0

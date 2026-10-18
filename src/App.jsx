@@ -1,3 +1,5 @@
+// Top-level app: owns all UI state (organism, settings, simulation, selection)
+// and lays out the top bar, 3D viewport, and status bar.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Scene from './three/Scene.jsx'
 import OrganismPanel from './components/OrganismPanel.jsx'
@@ -35,6 +37,7 @@ function nextOrganismName(organisms) {
   return `Organism ${index}`
 }
 
+// Shows a scale bar, choosing a round "1/2/5 × 10ⁿ μm" length near 100 px.
 function ScaleReadout({ cameraInfo }) {
   const worldUnitsPerPixel = cameraInfo?.horizontalWorldUnitsPerPixel || 1
   const targetLength = worldUnitsPerPixel * 100
@@ -86,6 +89,7 @@ function App() {
   const [loadOpen, setLoadOpen] = useState(false)
   const lastOrganismRef = useRef(organism)
 
+  // Switching organism wipes the sim and any selection.
   useEffect(() => {
     if (lastOrganismRef.current === organism) return
     lastOrganismRef.current = organism
@@ -121,6 +125,7 @@ function App() {
 
   const resetView = useCallback(() => setResetKey((k) => k + 1), [])
 
+  // First click opens the setup modal; while running it just stops.
   const handleSimulateClick = useCallback(() => {
     if (simulationEnabled) {
       setSimulationEnabled(false)
@@ -140,6 +145,7 @@ function App() {
     setLoadOpen(false)
   }, [])
 
+  // Save from the organism editor: replace the same-named entry and make it current.
   const handleOrganismClose = useCallback((nextOrganism) => {
     setNewOrganismOpen(false)
     if (!nextOrganism) return

@@ -1,3 +1,5 @@
+// The 3D viewport: a single <Canvas> wiring together the camera rig, grid, and
+// the neuron network. Memoised so app state changes don't rebuild the scene.
 import { Canvas } from '@react-three/fiber'
 import { memo } from 'react'
 import CameraRig from './CameraRig.jsx'
@@ -24,6 +26,7 @@ const Scene = memo(function Scene({
 }) {
   const background = '#000000'
   return (
+    // dpr caps pixel ratio at 2 so big screens don't tank the framerate.
     <Canvas
       dpr={[1, 2]}
       gl={{ antialias: true }}

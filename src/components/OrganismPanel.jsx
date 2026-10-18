@@ -1,23 +1,29 @@
+// The "new/edit organism" workspace: upload a nerve-map image and trace its
+// three color-coded layers, then set length/depth/neuron count.
 import { useEffect, useRef, useState } from 'react'
 
+// The three trace layers and their colors. These match LAYER_COLORS in simData.
 const TOOLS = [
   { id: 'brain', label: 'Brain outline', color: '#f08a8a' },
   { id: 'cord', label: 'Ventral nerve cord', color: '#7fb7ee' },
   { id: 'nerves', label: 'Outer nerves', color: '#e8c76b' },
 ]
 
+// Brush widths, as a fraction of canvas width.
 const THICKNESSES = [
   { id: 'fine', label: 'Fine', value: 0.006 },
   { id: 'medium', label: 'Medium', value: 0.012 },
   { id: 'broad', label: 'Broad', value: 0.022 },
 ]
 
+// Uploads get downscaled so the longest side stays under this.
 const MAX_IMAGE_SIZE = 1600
 
 function distance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 }
 
+// Checks a drawing is usable: all three colors present and joined into one blob.
 function validateDrawing(canvas) {
   if (!canvas) return { valid: false, message: 'Upload an image to begin.' }
 
@@ -53,6 +59,7 @@ function validateDrawing(canvas) {
     }
   }
 
+  // Flood-fill from the first drawn pixel; everything should be reachable.
   const first = pixels.findIndex(Boolean)
   const queue = [first]
   const visited = new Uint8Array(pixels.length)
@@ -89,6 +96,7 @@ function validateDrawing(canvas) {
 }
 
 export default function OrganismPanel({ initialOrganism, onClose, defaultName }) {
+  // Two stacked canvases: the uploaded image underneath, the user's tracing on top.
   const imageCanvasRef = useRef(null)
   const drawingCanvasRef = useRef(null)
   const canvasWrapRef = useRef(null)
@@ -127,6 +135,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
 
   const validate = () => setValidation(validateDrawing(drawingCanvasRef.current))
 
+  // Bake image + tracing into a single PNG the renderer can sample.
   const acceptImage = () => {
     const imageCanvas = imageCanvasRef.current
     const drawingCanvas = drawingCanvasRef.current
@@ -143,6 +152,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     setAcceptedSize({ width: drawingCanvas.width, height: drawingCanvas.height })
   }
 
+  // Reads a picked file, downscales it, and resets the drawing state.
   const loadImage = (file) => {
     if (!file || !file.type.startsWith('image/')) return
     const url = URL.createObjectURL(file)
@@ -163,6 +173,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     image.src = url
   }
 
+  // Paint the uploaded image onto its canvas (rotating portrait shots upright).
   useEffect(() => {
     if (!imageLoaded || !imageSource) return undefined
     const imageCanvas = imageCanvasRef.current
@@ -203,6 +214,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     }
   }, [imageLoaded, imageSize, imageSource, drawingSource])
 
+  // Track the container width so the canvas can scale to fit.
   useEffect(() => {
     if (!canvasWrapRef.current) return undefined
     const updateWidth = () => {
@@ -214,6 +226,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     return () => observer.disconnect()
   }, [imageLoaded])
 
+  // Ctrl/Cmd+Z to undo, Ctrl/Cmd+Y or Shift+Ctrl/Cmd+Z to redo.
   useEffect(() => {
     const handleKeyDown = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
@@ -229,6 +242,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     return () => window.removeEventListener('keydown', handleKeyDown)
   })
 
+  // Snapshots the drawing canvas for undo (keeps the last 50 states).
   const saveHistory = () => {
     const canvas = drawingCanvasRef.current
     if (!canvas) return
@@ -242,6 +256,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     historyIndexRef.current = historyRef.current.length - 1
   }
 
+  // Loads a snapshot back onto the canvas.
   const restoreHistory = (index) => {
     const canvas = drawingCanvasRef.current
     if (!canvas || index < 0 || index >= historyRef.current.length) return
@@ -265,6 +280,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     restoreHistory(historyIndexRef.current + 1)
   }
 
+  // Converts a pointer event to canvas pixel coordinates.
   const pointFromEvent = (event) => {
     const canvas = drawingCanvasRef.current
     const bounds = canvas.getBoundingClientRect()
@@ -280,6 +296,7 @@ export default function OrganismPanel({ initialOrganism, onClose, defaultName })
     }
   }
 
+  // Draws a segment from the last point to the current one.
   const draw = (event) => {
     if (!drawingRef.current || !imageLoaded) return
     const point = pointFromEvent(event)

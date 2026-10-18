@@ -1,3 +1,5 @@
+// Modal for choosing an Izhikevich firing pattern (or tuning a, b, c, d by hand)
+// before starting the simulation.
 import { useMemo, useState } from 'react'
 import { DEFAULT_PARAMS, IZH_DESCRIPTIONS, IZH_PRESETS, IZH_RANGES } from '../sim/izhikevich'
 
@@ -7,6 +9,7 @@ export default function SimulationPanel({ onStart, onCancel }) {
   const [presetId, setPresetId] = useState(DEFAULT_PARAMS.id || IZH_PRESETS[0].id)
   const [params, setParams] = useState(DEFAULT_PARAMS)
 
+  // Picking a preset loads its four parameters wholesale.
   const handlePresetChange = (event) => {
     const id = event.target.value
     setPresetId(id)
@@ -14,6 +17,7 @@ export default function SimulationPanel({ onStart, onCancel }) {
     if (preset) setParams(preset)
   }
 
+  // Editing any field drops us into "Custom" and updates just that value.
   const handleParamChange = (key, value) => {
     const num = parseFloat(value)
     if (isNaN(num)) return

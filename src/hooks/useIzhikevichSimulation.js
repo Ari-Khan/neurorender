@@ -1,3 +1,6 @@
+// Drives the Izhikevich simulation: steps everyone in a rAF loop, applies the
+// chemical stimuli, and pushes spikes into the shared store.
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_PARAMS, izhikevichStep } from '../sim/izhikevich'
 import { beginRun, endRun, pushSpike, recordFrame } from '../sim/simData'
@@ -7,9 +10,11 @@ import {
   createStimuliState,
 } from '../sim/stimuli'
 
+// Clamps so a stalled tab doesn't try to simulate a huge backlog at once.
 const MAX_FRAME_ELAPSED = 100
 const MAX_STEPS_PER_FRAME = 1000
 
+// Cheap deterministic 0..1 noise, used for per-neuron jitter.
 function hash01(seed) {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
   return value - Math.floor(value)
@@ -41,6 +46,7 @@ export default function useIzhikevichSimulation({
   const stepAccumRef = useRef(0)
   const stepRef = useRef(null)
 
+  // (Re)builds all per-neuron state and starts a run.
   const initState = useCallback(
     (paramsPerNeuron) => {
       const count = nodes.length
@@ -88,6 +94,7 @@ export default function useIzhikevichSimulation({
     [nodes.length, stimulus, couplingStrength, dt, speed],
   )
 
+  // Halts the loop and marks the run stopped in the store.
   const stop = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current)
     frameRef.current = null
@@ -95,6 +102,8 @@ export default function useIzhikevichSimulation({
     setRunning(false)
   }, [])
 
+  // One animation frame: figure out how many fixed dt substeps to run, advance
+  // the neurons, then schedule the next frame.
   const step = useCallback(
     (now) => {
       if (!enabled) {
@@ -124,6 +133,7 @@ export default function useIzhikevichSimulation({
       const drive = sim.drive
       const params = sim.params
       const spikeTimes = sim.spikeTimes
+      // Undirected adjacency list built fresh each frame (cheap, keeps refs simple).
       const neighborMap = new Map()
       connections.forEach((conn) => {
         const [a, b] = conn.split('-')
@@ -179,10 +189,12 @@ export default function useIzhikevichSimulation({
     [enabled, dt, couplingStrength, speed, nodes.length, connections, stimuli, stop],
   )
 
+  // Keep the rAF callback pointed at the latest step closure.
   useEffect(() => {
     stepRef.current = step
   }, [step])
 
+  // Start/stop the loop when the sim is toggled on or off.
   useEffect(() => {
     if (!enabled) {
       if (frameRef.current) {
@@ -202,6 +214,7 @@ export default function useIzhikevichSimulation({
     }
   }, [enabled])
 
+  // Current sim clock in seconds; refs stay live across renders.
   const getTime = useCallback(() => simRef.current.time, [])
 
   return {

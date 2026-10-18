@@ -1,3 +1,4 @@
+// The reference grid: a floor grid plus optional vertical slices and axes.
 import { Grid } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
@@ -21,6 +22,7 @@ export default function GridSpace({ settings, visible = true }) {
 
   const axisSize = Math.max(8, worldSize * 0.18)
 
+  // Shared props for the floor and the two vertical grids.
   const gridProps = {
     args: [gridSize, gridSize],
     cellSize,

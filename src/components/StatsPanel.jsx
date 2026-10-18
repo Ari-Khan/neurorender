@@ -1,3 +1,5 @@
+// The floating analysis panel. Three tabs — neuron inspector, chemical stimuli,
+// and population/section stats (with a spike raster and per-layer rate plot).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { LAYER_COLORS, forEachSpikeInRange, simData } from '../sim/simData'
 import { DEFAULT_STIMULI, STIMULI_INFO, STIMULI_OPTIONS } from '../sim/stimuli'
@@ -10,15 +12,18 @@ const NEURON_RATE_WINDOW_MS = 2000
 const MAX_DRAWN_SPIKES = 30000
 const LAYER_NAMES = ['Brain', 'VN', 'ON']
 
+// Layer color as a CSS string.
 function layerCss(layer) {
   const c = LAYER_COLORS[layer] || [200, 200, 200]
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`
 }
 
+// Fixed-decimal number, tolerant of undefined.
 function fmt(value, digits = 1) {
   return Number(value).toFixed(digits)
 }
 
+// Earliest spike overall and the earliest from the brain layer.
 function firstSpikes(data) {
   let firstAny = 0
   let firstBrain = 0
@@ -32,6 +37,7 @@ function firstSpikes(data) {
   return { firstAny, firstBrain }
 }
 
+// Counts one neuron's spikes in a time window.
 function neuronSpikesInWindow(data, neuronIndex, fromMs, toMs) {
   let n = 0
   forEachSpikeInRange(data, fromMs, toMs, (index) => {
@@ -40,6 +46,7 @@ function neuronSpikesInWindow(data, neuronIndex, fromMs, toMs) {
   return n
 }
 
+// Sizes a canvas to its CSS box and clears it, returning the 2D context.
 function setupCanvas(canvas, dpr) {
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -54,6 +61,7 @@ function setupCanvas(canvas, dpr) {
   return { ctx, width, height }
 }
 
+// Spike raster: one dot per spike, x = time, y = neuron index.
 function drawRaster(canvas, dpr, data) {
   const frame = canvas && setupCanvas(canvas, dpr)
   if (!frame) return
@@ -99,6 +107,7 @@ function drawRaster(canvas, dpr, data) {
   ctx.fillRect(width - 1, 0, 1, height)
 }
 
+// Firing rate over time, one line per layer, binned across the window.
 function drawRates(canvas, dpr, data) {
   const frame = canvas && setupCanvas(canvas, dpr)
   if (!frame) return
@@ -160,12 +169,14 @@ function drawRates(canvas, dpr, data) {
   ctx.fillText(`${maxRate.toFixed(1)} Hz`, 4, 10)
 }
 
+// Redraws both plots.
 function drawAnalysis(rasterCanvas, rateCanvas, data) {
   const dpr = window.devicePixelRatio || 1
   drawRaster(rasterCanvas, dpr, data)
   drawRates(rateCanvas, dpr, data)
 }
 
+// One label/value line in a stats section.
 function Row({ label, value, accent }) {
   return (
     <div className="row stats-row">
@@ -175,6 +186,7 @@ function Row({ label, value, accent }) {
   )
 }
 
+// Colored pill naming a layer.
 function LayerChip({ layer }) {
   return (
     <span className="stats-chip" style={{ background: layerCss(layer) }}>
@@ -263,16 +275,19 @@ export default function StatsPanel({
     setBodyHeight((prev) => (prev === body ? prev : body))
   }, [tab, expanded, selectedNeuron, stimuli])
 
+  // Nudge a re-render a few times a second so the live numbers refresh.
   useEffect(() => {
     if (!expanded) return undefined
     const id = window.setInterval(() => setTick((t) => t + 1), 250)
     return () => window.clearInterval(id)
   }, [expanded])
 
+  // Force a redraw whenever the plot is shown again.
   useLayoutEffect(() => {
     lastDrawRef.current = null
   }, [tab, expanded])
 
+  // Redraw the plots when they're visible and the data has moved on.
   const drawKey = `${simData.simTimeMs}|${simData.histCount}|${simData.neuronCount}`
   useLayoutEffect(() => {
     if (!expanded || tab !== 'section') return
@@ -281,6 +296,7 @@ export default function StatsPanel({
     drawAnalysis(rasterRef.current, rateRef.current, simData)
   }, [expanded, tab, drawKey])
 
+  // Everything below is derived from the shared store for this render.
   const d = simData
   const totalNeurons = Math.max(d.neuronCount, networkStats?.neurons || 0)
   const layerCounts = d.layerCounts

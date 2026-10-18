@@ -1,3 +1,6 @@
+// Izhikevich (2003) spiking neuron model — presets, ranges, and the step function.
+
+// Named firing patterns; each is just an (a, b, c, d) tuple.
 export const IZH_PRESETS = [
   {
     id: 'regular-spiking',
@@ -62,6 +65,8 @@ export const IZH_DESCRIPTIONS = {
   d: 'Increment to recovery variable u after spike (controls post-spike adaptation/bursting).',
 }
 
+// Advances one neuron by dt. `v` is membrane voltage, `u` a recovery variable.
+// vPeak/vCeil are normally 30 but shift when chemicals move the spike threshold.
 export function izhikevichStep(v, u, a, b, c, d, I, dt, vPeak = 30, vCeil = 30) {
   let vv = v
   let uu = u
@@ -81,6 +86,7 @@ export function izhikevichStep(v, u, a, b, c, d, I, dt, vPeak = 30, vCeil = 30) 
   return { v: vv, u: uu, spiked }
 }
 
+// Gap-junction current: pulls v toward the neighbour's voltage, scaled by g.
 export function getCouplingCurrent(v, vj, g) {
   return g * (vj - v)
 }

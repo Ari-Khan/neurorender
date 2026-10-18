@@ -1,3 +1,5 @@
+// Scene/camera defaults, persisted to localStorage.
+
 export const DEFAULT_SETTINGS = {
   worldSize: 120,
   showAxes: true,
@@ -11,8 +13,10 @@ export const DEFAULT_SETTINGS = {
   damping: 8,
 }
 
+// World height is always half its width.
 export const heightFor = (worldSize) => worldSize / 2
 
+// Loads saved settings, falling back to defaults if storage is empty or broken.
 export function loadSettings() {
   try {
     const raw = localStorage.getItem('neurorender.settings.v1')
