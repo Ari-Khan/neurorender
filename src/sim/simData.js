@@ -32,7 +32,6 @@ export const simData = {
   spikeCounts: emptyI32(),
   firstSpike: emptyF64(),
   lastSpike: emptyF64(),
-  spikeTimes: [],
   params: [],
   drive: emptyF32(),
   v: emptyF32(),
@@ -57,7 +56,6 @@ export function resetSimData() {
   simData.spikeCounts = emptyI32()
   simData.firstSpike = emptyF64()
   simData.lastSpike = emptyF64()
-  simData.spikeTimes = []
   simData.params = []
   simData.drive = emptyF32()
   simData.v = emptyF32()
@@ -79,7 +77,6 @@ export function beginRun(info) {
   simData.spikeCounts = info.spikeCounts
   simData.firstSpike = info.firstSpike
   simData.lastSpike = info.lastSpike
-  simData.spikeTimes = info.spikeTimes
   simData.params = info.params
   simData.drive = info.drive
   simData.v = info.v
@@ -140,13 +137,4 @@ export function forEachSpikeInRange(data, fromMs, toMs, visit) {
     if (t > toMs) break
     visit(data.histIdx[p], t)
   }
-}
-
-// Convenience count over the same range.
-export function countSpikesInRange(data, fromMs, toMs) {
-  let n = 0
-  forEachSpikeInRange(data, fromMs, toMs, () => {
-    n += 1
-  })
-  return n
 }

@@ -85,8 +85,3 @@ export function izhikevichStep(v, u, a, b, c, d, I, dt, vPeak = 30, vCeil = 30) 
   }
   return { v: vv, u: uu, spiked }
 }
-
-// Gap-junction current: pulls v toward the neighbour's voltage, scaled by g.
-export function getCouplingCurrent(v, vj, g) {
-  return g * (vj - v)
-}

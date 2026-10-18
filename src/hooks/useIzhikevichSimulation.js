@@ -79,7 +79,6 @@ export default function useIzhikevichSimulation({
         spikeCounts: new Int32Array(count),
         firstSpike: new Float64Array(count),
         lastSpike: new Float64Array(count),
-        spikeTimes,
         params,
         drive,
         v,
