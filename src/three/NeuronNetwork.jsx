@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import useIzhikevichSimulation from '../hooks/useIzhikevichSimulation'
@@ -18,6 +18,8 @@ const CROSS_LAYER_DISTANCE = 0.032
 const LAYER_ANIMATION_STEPS = 60
 const LAYER_FRAME_INTERVAL = 1
 const HIGH_CONTRAST_COLORS = ['#ff4d4d', '#4db8ff', '#ff9d3d']
+const FLASH_GREEN = new THREE.Color('#39ff14')
+const FLASH_DURATION = 100
 
 function colorDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
@@ -348,7 +350,7 @@ function spatialKey(x, y, z) {
   return `${x},${y},${z}`
 }
 
-function DendriteLink({ connection, nodes, separation, depth, length, highContrast }) {
+const DendriteLink = memo(function DendriteLink({ connection, nodes, separation, depth, length, highContrast }) {
   const [startIndex, endIndex] = connection.split('-').map(Number)
   const startLayer = nodes[startIndex].layer
   const endLayer = nodes[endIndex].layer
@@ -378,7 +380,7 @@ function DendriteLink({ connection, nodes, separation, depth, length, highContra
       />
     </mesh>
   )
-}
+})
 
 function NetworkLinks({
   nodes,
@@ -612,11 +614,6 @@ export default function NeuronNetwork({
     }
   }, [organism])
 
-  const [flashNow, setFlashNow] = useState(() => performance.now())
-  useFrame(() => {
-    if (simulationEnabled) setFlashNow(performance.now())
-  })
-
   const worldPositions = useMemo(() => nodes.map((node) => node.position), [nodes])
   const simulationConnections = useMemo(() => {
     if (nodes.length === 0) return []
@@ -645,7 +642,7 @@ export default function NeuronNetwork({
     couplingStrength: 0.02,
   })
 
-  const { init: initSim } = simulation
+  const { init: initSim, getTime } = simulation
   useEffect(() => {
     if (!simulationEnabled) return
     if (nodes.length === 0) return
@@ -653,8 +650,7 @@ export default function NeuronNetwork({
     initSim(paramsPerNeuron)
   }, [simulationEnabled, nodes, simulationParams, initSim])
 
-  const spikeTimes = simulation.spikeTimes
-  const flashDuration = 100
+  const spikeTimesRef = simulation.spikeTimes
 
   const glowTexture = useMemo(() => {
     const size = 64
@@ -675,49 +671,86 @@ export default function NeuronNetwork({
   }, [])
 
   const { pointGeometry, glowGeometry } = useMemo(() => {
-    const t = flashNow
     const pos = new Float32Array(nodes.length * 3)
     const colors = new Float32Array(nodes.length * 3)
+    const baseColors = new Float32Array(nodes.length * 3)
     const glowColors = new Float32Array(nodes.length * 3)
-    const green = new THREE.Color('#39ff14')
     const base = new THREE.Color()
     for (let i = 0; i < nodes.length; i += 1) {
       const node = nodes[i]
       const position = node.position.clone()
       position.z += layerOffset(node, separation, depth, organism.length)
-      const st = spikeTimes[i]
-      const age = simulationEnabled && st ? t - st : Infinity
-      const flash = age < flashDuration ? Math.exp(-age / 24) : 0
       pos[i * 3] = position.x
       pos[i * 3 + 1] = position.y
       pos[i * 3 + 2] = position.z
 
       if (highContrast) base.set(HIGH_CONTRAST_COLORS[node.layer])
       else base.set('#d6d6d6')
-      if (flash > 0) base.lerp(green, Math.min(1, flash))
       colors[i * 3] = base.r
       colors[i * 3 + 1] = base.g
       colors[i * 3 + 2] = base.b
-
-      const glowLevel = Math.min(1, flash * 1.4)
-      glowColors[i * 3] = green.r * glowLevel
-      glowColors[i * 3 + 1] = green.g * glowLevel
-      glowColors[i * 3 + 2] = green.b * glowLevel
+      baseColors[i * 3] = base.r
+      baseColors[i * 3 + 1] = base.g
+      baseColors[i * 3 + 2] = base.b
     }
     const geom = new THREE.BufferGeometry()
     geom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     geom.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    geom.setAttribute('baseColor', new THREE.BufferAttribute(baseColors, 3))
     const glow = new THREE.BufferGeometry()
     glow.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3))
     glow.setAttribute('color', new THREE.BufferAttribute(glowColors, 3))
     return { pointGeometry: geom, glowGeometry: glow }
-  }, [nodes, separation, depth, organism.length, highContrast, simulationEnabled, spikeTimes, flashNow])
+  }, [nodes, separation, depth, organism.length, highContrast])
+
+  const pointsRef = useRef(null)
+  const glowRef = useRef(null)
+  const flashActiveRef = useRef(false)
+  useFrame(() => {
+    const points = pointsRef.current
+    const glow = glowRef.current
+    if (!points || !glow) return
+    const currentPointGeometry = points.geometry
+    const currentGlowGeometry = glow.geometry
+    const colors = currentPointGeometry.attributes.color.array
+    const base = currentPointGeometry.attributes.baseColor.array
+    const glowColors = currentGlowGeometry.attributes.color.array
+    const active = simulationEnabled && colors.length > 0
+    const wasActive = flashActiveRef.current
+    if (!active && !wasActive) return
+    let any = false
+    colors.set(base)
+    glowColors.fill(0)
+    if (active) {
+      const simMs = getTime() * 1000
+      const spikeTimes = spikeTimesRef.current
+      for (let i = 0; i < nodes.length; i += 1) {
+        const st = spikeTimes[i]
+        const age = st ? simMs - st : Infinity
+        if (age >= FLASH_DURATION) continue
+        const flash = Math.exp(-age / 24)
+        const k = Math.min(1, flash)
+        const i3 = i * 3
+        colors[i3] += (FLASH_GREEN.r - colors[i3]) * k
+        colors[i3 + 1] += (FLASH_GREEN.g - colors[i3 + 1]) * k
+        colors[i3 + 2] += (FLASH_GREEN.b - colors[i3 + 2]) * k
+        const glowLevel = Math.min(1, flash * 1.4)
+        glowColors[i3] = FLASH_GREEN.r * glowLevel
+        glowColors[i3 + 1] = FLASH_GREEN.g * glowLevel
+        glowColors[i3 + 2] = FLASH_GREEN.b * glowLevel
+        any = true
+      }
+    }
+    currentPointGeometry.attributes.color.needsUpdate = true
+    currentGlowGeometry.attributes.color.needsUpdate = true
+    glow.visible = any
+    flashActiveRef.current = any
+  })
 
   if (nodes.length === 0) return null
-  const hasFlash = simulationEnabled && spikeTimes.some((s) => s && flashNow - s < flashDuration)
   return (
     <group position={[0, 0.08, 0]}>
-      <points geometry={pointGeometry} frustumCulled={false}>
+      <points ref={pointsRef} geometry={pointGeometry} frustumCulled={false}>
         <pointsMaterial
           color="#ffffff"
           vertexColors
@@ -725,21 +758,19 @@ export default function NeuronNetwork({
           sizeAttenuation
         />
       </points>
-      {hasFlash && (
-        <points geometry={glowGeometry} frustumCulled={false}>
-          <pointsMaterial
-            vertexColors
-            map={glowTexture}
-            size={3.6}
-            sizeAttenuation
-            transparent
-            opacity={1}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-            toneMapped={false}
-          />
-        </points>
-      )}
+      <points ref={glowRef} geometry={glowGeometry} frustumCulled={false} visible={false}>
+        <pointsMaterial
+          vertexColors
+          map={glowTexture}
+          size={3.6}
+          sizeAttenuation
+          transparent
+          opacity={1}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </points>
       <NetworkLinks
         nodes={nodes}
         separation={separation}
